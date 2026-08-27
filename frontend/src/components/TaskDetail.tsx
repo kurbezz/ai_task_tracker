@@ -25,6 +25,7 @@ export function TaskDetail({ taskId, onClose, onTaskChange }: TaskDetailProps) {
   const [logMessage, setLogMessage] = useState("");
   const [tagName, setTagName] = useState("");
   const [busy, setBusy] = useState("");
+  const [copied, setCopied] = useState(false);
 
   async function refresh() {
     const [nextTask, nextLogs] = await Promise.all([getTask(taskId), listLogs(taskId)]);
@@ -85,6 +86,18 @@ export function TaskDetail({ taskId, onClose, onTaskChange }: TaskDetailProps) {
     });
   }
 
+  async function copyTaskCommand() {
+    const command = `/tt ${taskId}`;
+    try {
+      await navigator.clipboard.writeText(command);
+    } catch {
+      window.prompt("Copy the command below:", command);
+      return;
+    }
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1500);
+  }
+
   const currentIndex = task ? STATUS_ORDER.indexOf(task.status) : 0;
   const allowedStatuses = task ? STATUS_ORDER.slice(0, Math.min(currentIndex + 2, STATUS_ORDER.length)) : [];
 
@@ -93,7 +106,17 @@ export function TaskDetail({ taskId, onClose, onTaskChange }: TaskDetailProps) {
       <aside className="detail-panel" role="dialog" aria-modal="true" aria-label="Task details" onMouseDown={(event) => event.stopPropagation()}>
         <div className="detail-topline"><span className="section-kicker">Task detail</span><button className="icon-button" type="button" onClick={onClose} aria-label="Close task detail">×</button></div>
         {loading ? <p className="loading-copy">Loading task…</p> : !task ? <div className="error-banner" role="alert">{error || "Task could not be loaded."}</div> : <>
-          <h2 className="detail-title">{task.title}</h2>
+          <div className="detail-title-row">
+            <h2 className="detail-title">{task.title}</h2>
+            <button
+              className="copy-command-button"
+              type="button"
+              onClick={copyTaskCommand}
+              aria-label={`Copy command /tt ${taskId}`}
+            >
+              {copied ? "Copied!" : `/tt ${taskId}`}
+            </button>
+          </div>
           {error && <div className="error-banner detail-error" role="alert">{error}</div>}
 
           <section className="detail-section workflow-section">
