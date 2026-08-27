@@ -1,0 +1,117 @@
+import { FormEvent, useEffect, useState } from "react";
+import { addLog, addTag, getTask, listLogs, removeTag, transitionTask, updateTask } from "../api";
+import { STATUS_LABELS, STATUS_ORDER, type Status, type Task, type TaskLog } from "../types";
+import { TagBadge } from "./TagBadge";
+
+interface TaskDetailProps {
+  taskId: string;
+  onClose: () => void;
+  onTaskChange: () => Promise<void> | void;
+}
+
+function formatDate(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.valueOf()) ? value : date.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
+}
+
+export function TaskDetail({ taskId, onClose, onTaskChange }: TaskDetailProps) {
+  const [task, setTask] = useState<Task | null>(null);
+  const [logs, setLogs] = useState<TaskLog[]>([]);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [agent, setAgent] = useState("");
+  const [result, setResult] = useState("");
+  const [logAuthor, setLogAuthor] = useState("");
+  const [logMessage, setLogMessage] = useState("");
+  const [tagName, setTagName] = useState("");
+  const [busy, setBusy] = useState("");
+
+  async function refresh() {
+    const [nextTask, nextLogs] = await Promise.all([getTask(taskId), listLogs(taskId)]);
+    setTask(nextTask);
+    setLogs(nextLogs);
+    setAgent(nextTask.agent ?? "");
+    setResult(nextTask.result_summary ?? "");
+  }
+
+  useEffect(() => {
+    setLoading(true);
+    setError("");
+    refresh().catch((reason: Error) => setError(reason.message)).finally(() => setLoading(false));
+  // Refreshes whenever a different card is opened.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [taskId]);
+
+  async function mutate(action: string, operation: () => Promise<unknown>, keepInput = false) {
+    setError("");
+    setBusy(action);
+    try {
+      await operation();
+      await refresh();
+      await onTaskChange();
+      if (!keepInput && action === "add-log") { setLogAuthor(""); setLogMessage(""); }
+      if (!keepInput && action === "add-tag") setTagName("");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not save this change");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  function saveDetails(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    mutate("save", () => updateTask(taskId, { agent: agent.trim() || null, result_summary: result.trim() || null }), true);
+  }
+
+  function submitLog(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    mutate("add-log", () => addLog(taskId, { author: logAuthor, message: logMessage }));
+  }
+
+  function submitTag(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    mutate("add-tag", () => addTag(taskId, tagName));
+  }
+
+  const currentIndex = task ? STATUS_ORDER.indexOf(task.status) : 0;
+  const allowedStatuses = task ? STATUS_ORDER.slice(0, Math.min(currentIndex + 2, STATUS_ORDER.length)) : [];
+
+  return (
+    <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
+      <aside className="detail-panel" role="dialog" aria-modal="true" aria-label="Task details" onMouseDown={(event) => event.stopPropagation()}>
+        <div className="detail-topline"><span className="section-kicker">Task detail</span><button className="icon-button" type="button" onClick={onClose} aria-label="Close task detail">×</button></div>
+        {loading ? <p className="loading-copy">Loading task…</p> : !task ? <div className="error-banner" role="alert">{error || "Task could not be loaded."}</div> : <>
+          <h2 className="detail-title">{task.title}</h2>
+          {error && <div className="error-banner detail-error" role="alert">{error}</div>}
+
+          <section className="detail-section workflow-section">
+            <label className="field-label" htmlFor="task-status">Workflow stage</label>
+            <select id="task-status" value={task.status} disabled={busy !== ""} onChange={(event) => mutate("status", () => transitionTask(taskId, event.target.value as Status), true)}>
+              {allowedStatuses.map((status) => <option key={status} value={status}>{STATUS_LABELS[status]}</option>)}
+            </select>
+            <p className="field-note">Move forward one stage, or return work to an earlier stage.</p>
+          </section>
+
+          <section className="detail-section"><h3>Brief</h3><p className="detail-description">{task.description || "No description has been added."}</p></section>
+
+          <form className="detail-section edit-form" onSubmit={saveDetails}>
+            <h3>Assignment & outcome</h3>
+            <label>Agent<input value={agent} onChange={(event) => setAgent(event.target.value)} placeholder="e.g. coding-agent" /></label>
+            <label>Result summary<textarea rows={3} value={result} onChange={(event) => setResult(event.target.value)} placeholder="What did the work produce?" /></label>
+            <button className="button button-secondary" disabled={busy !== ""}>{busy === "save" ? "Saving…" : "Save details"}</button>
+          </form>
+
+          <section className="detail-section"><h3>Tags</h3>
+            <div className="tag-manager">{task.tags.length ? task.tags.map((tag) => <span className="tag-with-remove" key={tag.id}><TagBadge tag={tag} /><button type="button" aria-label={`Remove ${tag.name}`} disabled={busy !== ""} onClick={() => mutate("remove-tag", () => removeTag(taskId, tag.id), true)}>×</button></span>) : <p className="muted">No tags yet.</p>}</div>
+            <form className="inline-form" onSubmit={submitTag}><input value={tagName} onChange={(event) => setTagName(event.target.value)} required placeholder="Add a tag" /><button className="button button-secondary" disabled={busy !== ""}>{busy === "add-tag" ? "Adding…" : "Add"}</button></form>
+          </section>
+
+          <section className="detail-section"><h3>Timeline</h3>
+            <form className="log-form" onSubmit={submitLog}><input value={logAuthor} onChange={(event) => setLogAuthor(event.target.value)} required placeholder="Author" /><textarea rows={3} value={logMessage} onChange={(event) => setLogMessage(event.target.value)} required placeholder="Add a progress update" /><button className="button button-primary" disabled={busy !== ""}>{busy === "add-log" ? "Posting…" : "Post update"}</button></form>
+            <ol className="timeline">{logs.length ? logs.map((log) => <li key={log.id}><div><strong>{log.author}</strong><time>{formatDate(log.created_at)}</time></div><p>{log.message}</p></li>) : <li className="muted">No updates yet.</li>}</ol>
+          </section>
+        </>}
+      </aside>
+    </div>
+  );
+}

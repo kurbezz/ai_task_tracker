@@ -1,0 +1,52 @@
+PRAGMA foreign_keys = ON;
+
+CREATE TABLE projects (
+  id TEXT PRIMARY KEY NOT NULL,
+  name TEXT NOT NULL,
+  description TEXT,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE tasks (
+  id TEXT PRIMARY KEY NOT NULL,
+  project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  description TEXT,
+  status TEXT NOT NULL,
+  agent TEXT,
+  result_summary TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE task_logs (
+  id TEXT PRIMARY KEY NOT NULL,
+  task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  author TEXT NOT NULL,
+  message TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE tags (
+  id TEXT PRIMARY KEY NOT NULL,
+  name TEXT NOT NULL UNIQUE,
+  is_system INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE task_tags (
+  task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+  tag_id TEXT NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+  PRIMARY KEY (task_id, tag_id)
+);
+
+CREATE TABLE api_keys (
+  id TEXT PRIMARY KEY NOT NULL,
+  key_hash TEXT NOT NULL UNIQUE,
+  label TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+INSERT INTO tags (id, name, is_system) VALUES
+  ('00000000-0000-0000-0000-000000000001', 'NEEDS_USER_INPUT', 1),
+  ('00000000-0000-0000-0000-000000000002', 'BLOCKED', 1),
+  ('00000000-0000-0000-0000-000000000003', 'FAILED', 1);
