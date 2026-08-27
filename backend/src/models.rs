@@ -96,7 +96,7 @@ impl TaskResponse {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, schemars::JsonSchema)]
 pub struct CreateTask {
     pub project_id: String,
     pub title: String,

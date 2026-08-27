@@ -20,7 +20,17 @@ pub async fn create_task(
     State(state): State<AppState>,
     Json(input): Json<CreateTask>,
 ) -> Result<impl IntoResponse, AppError> {
-    ensure_project(&state, &input.project_id).await?;
+    Ok((
+        StatusCode::CREATED,
+        Json(create_task_core(&state, input).await?),
+    ))
+}
+
+pub(crate) async fn create_task_core(
+    state: &AppState,
+    input: CreateTask,
+) -> Result<TaskResponse, AppError> {
+    ensure_project(state, &input.project_id).await?;
     validate_title(&input.title)?;
 
     let now = Utc::now().to_rfc3339();
@@ -52,10 +62,7 @@ pub async fn create_task(
     .await
     .map_err(AppError::Internal)?;
 
-    Ok((
-        StatusCode::CREATED,
-        Json(task_response(&state, task).await?),
-    ))
+    task_response(state, task).await
 }
 
 pub async fn get_task(

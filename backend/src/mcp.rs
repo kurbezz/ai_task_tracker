@@ -1,21 +1,57 @@
 use rmcp::{
-    handler::server::router::tool::ToolRouter,
+    handler::server::{router::tool::ToolRouter, wrapper::Parameters},
     model::{CallToolResult, Content, ServerCapabilities, ServerInfo},
     tool, tool_handler, tool_router, ErrorData as McpError, ServerHandler,
 };
 use sqlx::SqlitePool;
 
+use crate::{error::AppError, handlers::tasks, models::CreateTask, AppState};
+
+fn json_result<T: serde::Serialize>(value: &T) -> Result<CallToolResult, McpError> {
+    let text = serde_json::to_string(value)
+        .map_err(|error| McpError::internal_error(error.to_string(), None))?;
+    Ok(CallToolResult::success(vec![Content::text(text)]))
+}
+
+fn tool_result<T: serde::Serialize>(
+    result: Result<T, AppError>,
+) -> Result<CallToolResult, McpError> {
+    match result {
+        Ok(value) => json_result(&value),
+        Err(AppError::NotFound) => Ok(CallToolResult::error(vec![Content::text("not found")])),
+        Err(AppError::Validation(message) | AppError::InvalidTransition(message)) => {
+            Ok(CallToolResult::error(vec![Content::text(message)]))
+        }
+        Err(AppError::Internal(error)) => {
+            eprintln!("internal database error: {error}");
+            Err(McpError::internal_error("internal server error", None))
+        }
+        Err(_) => Err(McpError::internal_error("unexpected error", None)),
+    }
+}
+
+#[derive(serde::Deserialize, schemars::JsonSchema)]
+struct GetTaskParams {
+    task_id: String,
+}
+
 #[derive(Clone)]
 pub struct TaskMcpServer {
-    _pool: SqlitePool,
+    pool: SqlitePool,
     tool_router: ToolRouter<TaskMcpServer>,
 }
 
 impl TaskMcpServer {
     pub fn new(pool: SqlitePool) -> Self {
         Self {
-            _pool: pool,
+            pool,
             tool_router: Self::tool_router(),
+        }
+    }
+
+    fn state(&self) -> AppState {
+        AppState {
+            pool: self.pool.clone(),
         }
     }
 }
@@ -25,6 +61,29 @@ impl TaskMcpServer {
     #[tool(description = "Health check for the AI Task Tracker MCP server")]
     async fn ping(&self) -> Result<CallToolResult, McpError> {
         Ok(CallToolResult::success(vec![Content::text("pong")]))
+    }
+
+    #[tool(description = "Create a new task in a project. New tasks start in TODO status.")]
+    async fn create_task(
+        &self,
+        Parameters(input): Parameters<CreateTask>,
+    ) -> Result<CallToolResult, McpError> {
+        let state = self.state();
+        tool_result(tasks::create_task_core(&state, input).await)
+    }
+
+    #[tool(description = "Get a task by id, including its current status and tags")]
+    async fn get_task(
+        &self,
+        Parameters(GetTaskParams { task_id }): Parameters<GetTaskParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let state = self.state();
+        let result = async {
+            let task = tasks::fetch_task(&state, &task_id).await?;
+            tasks::task_response(&state, task).await
+        }
+        .await;
+        tool_result(result)
     }
 }
 
