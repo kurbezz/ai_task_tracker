@@ -157,23 +157,19 @@ pub struct AttentionItem {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
 pub enum Status {
-    Todo,
-    InPlanning,
-    ReadyToImplement,
-    InWork,
-    WaitReview,
-    ReadyToDeploy,
+    ToDo,
+    ToAgent,
+    ToReview,
+    ToDeploy,
     Done,
 }
 
 impl Status {
-    pub const ORDER: [Self; 7] = [
-        Self::Todo,
-        Self::InPlanning,
-        Self::ReadyToImplement,
-        Self::InWork,
-        Self::WaitReview,
-        Self::ReadyToDeploy,
+    pub const ORDER: [Self; 5] = [
+        Self::ToDo,
+        Self::ToAgent,
+        Self::ToReview,
+        Self::ToDeploy,
         Self::Done,
     ];
 

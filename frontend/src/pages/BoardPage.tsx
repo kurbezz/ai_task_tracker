@@ -104,7 +104,7 @@ export function BoardPage() {
       ) : showTaskForm ? (
         <form className="task-form surface" onSubmit={submit}>
           <div className="form-heading">
-            <div><span className="section-kicker">Add task</span><p>Starts in the TODO column. Move it from the detail panel.</p></div>
+            <div><span className="section-kicker">Add task</span><p>Starts in the TO_DO column. Move it from the detail panel.</p></div>
             <button className="icon-button" type="button" onClick={() => setShowTaskForm(false)} aria-label="Close new task form">×</button>
           </div>
           <label>Project

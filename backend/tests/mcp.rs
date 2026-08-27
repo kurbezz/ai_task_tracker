@@ -127,7 +127,7 @@ async fn create_task_and_get_task_tools_round_trip() {
         serde_json::from_str(created_text.as_text().expect("text content").text.as_str())
             .expect("valid task json");
     assert_eq!(created_task["title"], "Ship the MCP server");
-    assert_eq!(created_task["status"], "TODO");
+    assert_eq!(created_task["status"], "TO_DO");
     let task_id = created_task["id"].as_str().expect("task id").to_owned();
 
     let get_args = serde_json::json!({ "task_id": task_id })
@@ -353,7 +353,20 @@ async fn transition_task_status_tool_enforces_workflow_rules() {
     .expect("valid task json");
     let task_id = created_task["id"].as_str().expect("task id").to_owned();
 
-    let valid_args = serde_json::json!({ "task_id": task_id, "status": "IN_PLANNING" })
+    let invalid_args = serde_json::json!({ "task_id": task_id, "status": "TO_REVIEW" })
+        .as_object()
+        .cloned()
+        .expect("invalid args should be an object");
+    let invalid = client
+        .call_tool(CallToolRequestParam {
+            name: "transition_task_status".into(),
+            arguments: Some(invalid_args),
+        })
+        .await
+        .expect("invalid transition should return a tool-level result");
+    assert_eq!(invalid.is_error, Some(true));
+
+    let valid_args = serde_json::json!({ "task_id": task_id, "status": "TO_AGENT" })
         .as_object()
         .cloned()
         .expect("valid args should be an object");
@@ -376,20 +389,7 @@ async fn transition_task_status_tool_enforces_workflow_rules() {
             .as_str(),
     )
     .expect("valid task json");
-    assert_eq!(transitioned["status"], "IN_PLANNING");
-
-    let invalid_args = serde_json::json!({ "task_id": task_id, "status": "IN_WORK" })
-        .as_object()
-        .cloned()
-        .expect("invalid args should be an object");
-    let invalid = client
-        .call_tool(CallToolRequestParam {
-            name: "transition_task_status".into(),
-            arguments: Some(invalid_args),
-        })
-        .await
-        .expect("invalid transition should return a tool-level result");
-    assert_eq!(invalid.is_error, Some(true));
+    assert_eq!(transitioned["status"], "TO_AGENT");
 
     client.cancel().await.expect("cancel client");
     server.abort();

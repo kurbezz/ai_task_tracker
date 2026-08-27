@@ -27,10 +27,13 @@ async fn health_check_is_public_and_returns_ok() {
 
 #[test]
 fn status_allows_one_step_forward_and_any_backward_rework() {
-    assert!(Status::Todo.can_transition_to(Status::InPlanning));
-    assert!(Status::WaitReview.can_transition_to(Status::InWork));
-    assert!(Status::ReadyToDeploy.can_transition_to(Status::Todo));
-    assert!(!Status::Todo.can_transition_to(Status::ReadyToImplement));
+    assert!(Status::ToDo.can_transition_to(Status::ToAgent));
+    assert!(Status::ToAgent.can_transition_to(Status::ToReview));
+    assert!(Status::ToReview.can_transition_to(Status::ToDeploy));
+    assert!(Status::ToDeploy.can_transition_to(Status::Done));
+    assert!(Status::ToReview.can_transition_to(Status::ToAgent));
+    assert!(Status::ToDeploy.can_transition_to(Status::ToDo));
+    assert!(!Status::ToDo.can_transition_to(Status::ToReview));
     assert!(!Status::Done.can_transition_to(Status::Done));
 }
 

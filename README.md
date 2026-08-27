@@ -40,15 +40,13 @@ session idle timeout in seconds; it defaults to `1800` (30 minutes).
 
 ## Workflow and attention tags
 
-Tasks move through these seven stages:
+Tasks move through these five stages:
 
-1. `TODO`
-2. `IN_PLANNING`
-3. `READY_TO_IMPLEMENT`
-4. `IN_WORK`
-5. `WAIT_REVIEW`
-6. `READY_TO_DEPLOY`
-7. `DONE`
+1. `TO_DO` — preparing plans/specs.
+2. `TO_AGENT` — ready to hand off to an agent to implement.
+3. `TO_REVIEW` — agent finished, awaiting review.
+4. `TO_DEPLOY` — reviewed, ready to deploy.
+5. `DONE` — merged/deployed or PR created.
 
 The API permits a one-step forward transition or rework to any earlier stage. The system tags
 `NEEDS_USER_INPUT`, `BLOCKED`, and `FAILED` identify attention items. Failures use the `FAILED`

@@ -105,7 +105,7 @@ impl TaskMcpServer {
         Ok(CallToolResult::success(vec![Content::text("pong")]))
     }
 
-    #[tool(description = "Create a new task in a project. New tasks start in TODO status.")]
+    #[tool(description = "Create a new task in a project. New tasks start in TO_DO status.")]
     async fn create_task(
         &self,
         Parameters(input): Parameters<CreateTask>,

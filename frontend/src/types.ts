@@ -1,29 +1,23 @@
 export type Status =
-  | "TODO"
-  | "IN_PLANNING"
-  | "READY_TO_IMPLEMENT"
-  | "IN_WORK"
-  | "WAIT_REVIEW"
-  | "READY_TO_DEPLOY"
+  | "TO_DO"
+  | "TO_AGENT"
+  | "TO_REVIEW"
+  | "TO_DEPLOY"
   | "DONE";
 
 export const STATUS_ORDER: Status[] = [
-  "TODO",
-  "IN_PLANNING",
-  "READY_TO_IMPLEMENT",
-  "IN_WORK",
-  "WAIT_REVIEW",
-  "READY_TO_DEPLOY",
+  "TO_DO",
+  "TO_AGENT",
+  "TO_REVIEW",
+  "TO_DEPLOY",
   "DONE",
 ];
 
 export const STATUS_LABELS: Record<Status, string> = {
-  TODO: "To do",
-  IN_PLANNING: "Planning",
-  READY_TO_IMPLEMENT: "Ready to build",
-  IN_WORK: "In work",
-  WAIT_REVIEW: "Review",
-  READY_TO_DEPLOY: "Ready to deploy",
+  TO_DO: "To do",
+  TO_AGENT: "To agent",
+  TO_REVIEW: "To review",
+  TO_DEPLOY: "To deploy",
   DONE: "Done",
 };
 

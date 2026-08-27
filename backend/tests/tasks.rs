@@ -49,7 +49,7 @@ async fn creates_lists_gets_and_updates_tasks_with_frontend_shape() {
     let task_id = task["id"].as_str().unwrap();
 
     assert_eq!(task["project_id"], project_id);
-    assert_eq!(task["status"], "TODO");
+    assert_eq!(task["status"], "TO_DO");
     assert_eq!(task["tags"], json!([]));
     assert_eq!(task["description"], "Build the service");
     assert_eq!(task["agent"], "coder");
@@ -81,7 +81,7 @@ async fn creates_lists_gets_and_updates_tasks_with_frontend_shape() {
     let updated = support::json_body(response).await;
     assert_eq!(updated["agent"], "reviewer");
     assert_eq!(updated["result_summary"], "Ready");
-    assert_eq!(updated["status"], "TODO");
+    assert_eq!(updated["status"], "TO_DO");
     assert_eq!(updated["tags"], json!([]));
 
     let response = app
@@ -230,26 +230,7 @@ async fn transitions_tasks_and_records_system_logs() {
         .oneshot(support::api_request(
             Method::POST,
             &format!("/api/tasks/{task_id}/status"),
-            Some(json!({"status": "IN_PLANNING"})),
-        ))
-        .await
-        .unwrap();
-    assert_eq!(response.status(), StatusCode::OK);
-    assert_eq!(support::json_body(response).await["status"], "IN_PLANNING");
-
-    let message: String = sqlx::query_scalar("SELECT message FROM task_logs WHERE task_id = ?")
-        .bind(task_id)
-        .fetch_one(&pool)
-        .await
-        .unwrap();
-    assert_eq!(message, "Status changed from TODO to IN_PLANNING");
-
-    let response = app
-        .clone()
-        .oneshot(support::api_request(
-            Method::POST,
-            &format!("/api/tasks/{task_id}/status"),
-            Some(json!({"status": "IN_WORK"})),
+            Some(json!({"status": "TO_REVIEW"})),
         ))
         .await
         .unwrap();
@@ -264,7 +245,26 @@ async fn transitions_tasks_and_records_system_logs() {
         .oneshot(support::api_request(
             Method::POST,
             &format!("/api/tasks/{task_id}/status"),
-            Some(json!({"status": "TODO"})),
+            Some(json!({"status": "TO_AGENT"})),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(support::json_body(response).await["status"], "TO_AGENT");
+
+    let message: String = sqlx::query_scalar("SELECT message FROM task_logs WHERE task_id = ?")
+        .bind(task_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(message, "Status changed from TO_DO to TO_AGENT");
+
+    let response = app
+        .clone()
+        .oneshot(support::api_request(
+            Method::POST,
+            &format!("/api/tasks/{task_id}/status"),
+            Some(json!({"status": "TO_DO"})),
         ))
         .await
         .unwrap();
@@ -274,7 +274,7 @@ async fn transitions_tasks_and_records_system_logs() {
         .oneshot(support::api_request(
             Method::POST,
             "/api/tasks/missing/status",
-            Some(json!({"status": "IN_PLANNING"})),
+            Some(json!({"status": "TO_AGENT"})),
         ))
         .await
         .unwrap();
@@ -339,7 +339,7 @@ async fn duplicate_transitions_do_not_create_extra_status_logs() {
             .oneshot(support::api_request(
                 Method::POST,
                 &format!("/api/tasks/{first_task_id}/status"),
-                Some(json!({"status": "IN_PLANNING"})),
+                Some(json!({"status": "TO_AGENT"})),
             ))
             .await
             .unwrap()
@@ -351,7 +351,7 @@ async fn duplicate_transitions_do_not_create_extra_status_logs() {
             .oneshot(support::api_request(
                 Method::POST,
                 &format!("/api/tasks/{second_task_id}/status"),
-                Some(json!({"status": "IN_PLANNING"})),
+                Some(json!({"status": "TO_AGENT"})),
             ))
             .await
             .unwrap()
@@ -394,7 +394,7 @@ async fn duplicate_transitions_do_not_create_extra_status_logs() {
         .fetch_one(&pool)
         .await
         .unwrap();
-    assert_eq!(status, "IN_PLANNING");
+    assert_eq!(status, "TO_AGENT");
 
     drop(app);
     pool.close().await;

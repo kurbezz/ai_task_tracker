@@ -39,7 +39,7 @@ pub(crate) async fn create_task_core(
         project_id: input.project_id,
         title: input.title,
         description: input.description,
-        status: Status::Todo.to_string(),
+        status: Status::ToDo.to_string(),
         agent: input.agent,
         result_summary: None,
         created_at: now.clone(),

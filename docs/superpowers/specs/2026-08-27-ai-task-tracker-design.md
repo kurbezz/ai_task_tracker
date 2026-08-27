@@ -84,16 +84,14 @@ Many-to-many join: `task_id`, `tag_id`.
 Fixed, linear pipeline. Transitions are validated server-side; invalid transitions return `409 Conflict`.
 
 ```
-TODO → IN_PLANNING → READY_TO_IMPLEMENT → IN_WORK → WAIT_REVIEW → READY_TO_DEPLOY → DONE
+TO_DO → TO_AGENT → TO_REVIEW → TO_DEPLOY → DONE
 ```
 
-- `TODO`: not started.
-- `IN_PLANNING`: questions being clarified, spec/plan being written.
-- `READY_TO_IMPLEMENT`: plan written, ready for implementation to start.
-- `IN_WORK`: implementation in progress.
-- `WAIT_REVIEW`: implementation done, awaiting review.
-- `READY_TO_DEPLOY`: review passed, ready to ship.
-- `DONE`: complete.
+- `TO_DO`: preparing plans/specs, not yet handed off.
+- `TO_AGENT`: ready to hand off to an agent to implement.
+- `TO_REVIEW`: agent finished implementation, awaiting review.
+- `TO_DEPLOY`: review passed, ready to deploy.
+- `DONE`: merged/deployed or PR created.
 
 Failure/blockage does **not** introduce a new pipeline status — it is represented by applying the `FAILED` or `BLOCKED` tag plus a `task_logs` entry explaining why, while the task remains at its current status (typically the status is manually moved backward by the owner/agent if rework is needed, or moves forward when the issue is resolved and tags are cleared).
 
