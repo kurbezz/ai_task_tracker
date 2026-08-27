@@ -52,3 +52,30 @@ Tasks move through these seven stages:
 The API permits a one-step forward transition or rework to any earlier stage. The system tags
 `NEEDS_USER_INPUT`, `BLOCKED`, and `FAILED` identify attention items. Failures use the `FAILED`
 tag plus a task log rather than a separate terminal workflow status.
+
+## MCP server for AI agents
+
+Agents can self-report their own progress (create tasks, move status, add logs, set tags,
+update agent/result) by connecting to the built-in MCP server instead of calling the REST API
+directly. The authenticated endpoint is mounted at `/mcp` on the same binary and port as the REST
+API; supply the same `X-Api-Key` used for `/api` requests.
+
+Example client configuration (Claude Code / opencode style):
+
+```json
+{
+  "mcpServers": {
+    "ai-task-tracker": {
+      "type": "http",
+      "url": "http://127.0.0.1:3000/mcp",
+      "headers": {
+        "X-Api-Key": "replace-with-your-key"
+      }
+    }
+  }
+}
+```
+
+Available tools: `create_task`, `get_task`, `list_projects`, `list_project_tasks`,
+`transition_task_status`, `add_task_log`, `add_task_tag`, `remove_task_tag`, `update_task`.
+Each tool shares the REST API's validation, persistence, and workflow-transition rules.
