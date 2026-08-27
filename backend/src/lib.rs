@@ -5,8 +5,10 @@ use axum::{
     Router,
 };
 use rmcp::transport::streamable_http_server::{
-    session::local::LocalSessionManager, StreamableHttpServerConfig, StreamableHttpService,
+    session::local::{LocalSessionManager, SessionConfig},
+    StreamableHttpServerConfig, StreamableHttpService,
 };
+use std::time::Duration;
 
 pub mod auth;
 pub mod db;
@@ -21,7 +23,19 @@ pub struct AppState {
     pub pool: sqlx::SqlitePool,
 }
 
+const MCP_SESSION_KEEP_ALIVE: Duration = Duration::from_secs(5 * 60);
+
 pub fn build_router(state: AppState) -> Router {
+    build_router_with_mcp_session_config(
+        state,
+        SessionConfig {
+            keep_alive: Some(MCP_SESSION_KEEP_ALIVE),
+            ..Default::default()
+        },
+    )
+}
+
+fn build_router_with_mcp_session_config(state: AppState, session_config: SessionConfig) -> Router {
     let api = Router::new()
         .route(
             "/projects",
@@ -70,7 +84,11 @@ pub fn build_router(state: AppState) -> Router {
             "/mcp",
             StreamableHttpService::new(
                 move || Ok(mcp::TaskMcpServer::new(mcp_pool.clone())),
-                LocalSessionManager::default().into(),
+                LocalSessionManager {
+                    session_config,
+                    ..Default::default()
+                }
+                .into(),
                 StreamableHttpServerConfig::default(),
             ),
         )
@@ -85,4 +103,98 @@ pub fn build_router(state: AppState) -> Router {
         .merge(mcp)
         .fallback(static_files::serve)
         .with_state(state)
+}
+
+#[cfg(test)]
+fn build_router_with_mcp_session_timeout(
+    state: AppState,
+    keep_alive: std::time::Duration,
+) -> Router {
+    build_router_with_mcp_session_config(
+        state,
+        SessionConfig {
+            keep_alive: Some(keep_alive),
+            ..Default::default()
+        },
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use std::time::Duration;
+
+    use rmcp::model::ClientInfo;
+
+    use super::*;
+
+    async fn test_state() -> AppState {
+        let pool = db::connect("sqlite::memory:").await.unwrap();
+        db::migrate(&pool).await.unwrap();
+        sqlx::query("INSERT INTO api_keys (id, key_hash, label, created_at) VALUES (?, ?, ?, ?)")
+            .bind(uuid::Uuid::new_v4().to_string())
+            .bind(auth::hash_key("test-key"))
+            .bind("test")
+            .bind(chrono::Utc::now().to_rfc3339())
+            .execute(&pool)
+            .await
+            .unwrap();
+        AppState { pool }
+    }
+
+    #[tokio::test]
+    async fn mcp_session_expires_after_inactivity() {
+        let router =
+            build_router_with_mcp_session_timeout(test_state().await, Duration::from_millis(25));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("test listener should bind");
+        let address = listener.local_addr().expect("listener address");
+        let server = tokio::spawn(async move {
+            let _ = axum::serve(listener, router).await;
+        });
+        let url = format!("http://{address}/mcp");
+        let client = reqwest::Client::new();
+
+        let initialized = client
+            .post(&url)
+            .header("x-api-key", "test-key")
+            .header("accept", "application/json, text/event-stream")
+            .json(&serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": ClientInfo::default(),
+            }))
+            .send()
+            .await
+            .expect("initialize request should complete");
+        assert!(initialized.status().is_success());
+        let session_id = initialized
+            .headers()
+            .get("mcp-session-id")
+            .expect("initialize should create a session")
+            .to_str()
+            .expect("session id should be valid")
+            .to_owned();
+
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let resumed = client
+            .post(&url)
+            .header("x-api-key", "test-key")
+            .header("accept", "application/json, text/event-stream")
+            .header("mcp-session-id", session_id)
+            .json(&serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "ping",
+                "params": {},
+            }))
+            .send()
+            .await
+            .expect("resumed request should complete");
+
+        assert_eq!(resumed.status(), reqwest::StatusCode::UNAUTHORIZED);
+        server.abort();
+    }
 }

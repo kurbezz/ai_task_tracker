@@ -60,6 +60,23 @@ async fn mcp_route_rejects_missing_api_key() {
     server.abort();
 }
 
+#[tokio::test]
+async fn mcp_route_rejects_invalid_api_key() {
+    let (base_url, server) = support::spawn_http_server(support::state().await).await;
+
+    let response = reqwest::Client::new()
+        .post(format!("{base_url}/mcp"))
+        .header("x-api-key", "wrong-key")
+        .header("content-type", "application/json")
+        .body(r#"{"jsonrpc":"2.0","method":"initialize","params":{},"id":1}"#)
+        .send()
+        .await
+        .expect("request should complete");
+
+    assert_eq!(response.status(), reqwest::StatusCode::UNAUTHORIZED);
+    server.abort();
+}
+
 async fn create_project(base_url: &str) -> String {
     let response = reqwest::Client::new()
         .post(format!("{base_url}/api/projects"))
@@ -551,6 +568,67 @@ async fn update_task_tool_sets_agent_and_result_summary_without_touching_title()
     assert_eq!(updated_task["title"], "Update me");
     assert_eq!(updated_task["agent"], "fixer");
     assert_eq!(updated_task["result_summary"], "Done");
+
+    client.cancel().await.expect("cancel client");
+    server.abort();
+}
+
+#[tokio::test]
+async fn add_task_tag_returns_tool_errors_for_blank_and_noncanonical_names() {
+    let (base_url, server) = support::spawn_http_server(support::state().await).await;
+    let project_id = create_project(&base_url).await;
+
+    let headers = support::api_key_header().into_iter().collect();
+    let transport = StreamableHttpClientTransport::with_client(
+        reqwest::Client::builder()
+            .default_headers(headers)
+            .build()
+            .expect("test client should build"),
+        StreamableHttpClientTransportConfig::with_uri(format!("{base_url}/mcp")),
+    );
+    let client = ClientInfo::default()
+        .serve(transport)
+        .await
+        .expect("client connects");
+
+    let create_args = serde_json::json!({ "project_id": project_id, "title": "Tag validation" })
+        .as_object()
+        .cloned()
+        .expect("create args should be an object");
+    let created = client
+        .call_tool(CallToolRequestParam {
+            name: "create_task".into(),
+            arguments: Some(create_args),
+        })
+        .await
+        .expect("create_task should succeed");
+    let created_task: serde_json::Value = serde_json::from_str(
+        created
+            .content
+            .first()
+            .expect("content block")
+            .as_text()
+            .expect("text content")
+            .text
+            .as_str(),
+    )
+    .expect("valid task json");
+    let task_id = created_task["id"].as_str().expect("task id").to_owned();
+
+    for name in [" ", "failed"] {
+        let arguments = serde_json::json!({ "task_id": task_id, "name": name })
+            .as_object()
+            .cloned()
+            .expect("tag args should be an object");
+        let result = client
+            .call_tool(CallToolRequestParam {
+                name: "add_task_tag".into(),
+                arguments: Some(arguments),
+            })
+            .await
+            .expect("validation failure should return a tool-level result");
+        assert_eq!(result.is_error, Some(true), "{name:?} should be rejected");
+    }
 
     client.cancel().await.expect("cancel client");
     server.abort();
