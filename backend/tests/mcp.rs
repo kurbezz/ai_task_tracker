@@ -478,3 +478,80 @@ async fn add_task_tag_and_remove_task_tag_tools_manage_tags() {
     client.cancel().await.expect("cancel client");
     server.abort();
 }
+
+#[tokio::test]
+async fn update_task_tool_sets_agent_and_result_summary_without_touching_title() {
+    let (base_url, server) = support::spawn_http_server(support::state().await).await;
+    let project_id = create_project(&base_url).await;
+
+    let headers = support::api_key_header().into_iter().collect();
+    let transport = StreamableHttpClientTransport::with_client(
+        reqwest::Client::builder()
+            .default_headers(headers)
+            .build()
+            .expect("test client should build"),
+        StreamableHttpClientTransportConfig::with_uri(format!("{base_url}/mcp")),
+    );
+    let client = ClientInfo::default()
+        .serve(transport)
+        .await
+        .expect("client connects");
+
+    let create_args = serde_json::json!({ "project_id": project_id, "title": "Update me" })
+        .as_object()
+        .cloned()
+        .expect("create args should be an object");
+    let created = client
+        .call_tool(CallToolRequestParam {
+            name: "create_task".into(),
+            arguments: Some(create_args),
+        })
+        .await
+        .expect("create_task should succeed");
+    let created_task: serde_json::Value = serde_json::from_str(
+        created
+            .content
+            .first()
+            .expect("content block")
+            .as_text()
+            .expect("text content")
+            .text
+            .as_str(),
+    )
+    .expect("valid task json");
+    let task_id = created_task["id"].as_str().expect("task id").to_owned();
+
+    let update_args = serde_json::json!({
+        "task_id": task_id,
+        "agent": "fixer",
+        "result_summary": "Done"
+    })
+    .as_object()
+    .cloned()
+    .expect("update args should be an object");
+    let updated = client
+        .call_tool(CallToolRequestParam {
+            name: "update_task".into(),
+            arguments: Some(update_args),
+        })
+        .await
+        .expect("update_task should succeed");
+    assert_ne!(updated.is_error, Some(true));
+    let updated_task: serde_json::Value = serde_json::from_str(
+        updated
+            .content
+            .first()
+            .expect("content block")
+            .as_text()
+            .expect("text content")
+            .text
+            .as_str(),
+    )
+    .expect("valid task json");
+    assert_eq!(updated_task["title"], "Update me");
+    assert_eq!(updated_task["agent"], "fixer");
+    assert_eq!(updated_task["result_summary"], "Done");
+
+    client.cancel().await.expect("cancel client");
+    server.abort();
+}

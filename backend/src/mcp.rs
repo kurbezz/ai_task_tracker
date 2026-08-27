@@ -70,6 +70,13 @@ struct RemoveTaskTagParams {
     tag_id: String,
 }
 
+#[derive(serde::Deserialize, schemars::JsonSchema)]
+struct UpdateTaskParams {
+    task_id: String,
+    agent: Option<String>,
+    result_summary: Option<String>,
+}
+
 #[derive(Clone)]
 pub struct TaskMcpServer {
     pool: SqlitePool,
@@ -183,6 +190,21 @@ impl TaskMcpServer {
             Ok(()) => Ok(CallToolResult::success(vec![Content::text("removed")])),
             Err(error) => tool_result::<()>(Err(error)),
         }
+    }
+
+    #[tool(
+        description = "Update a task's assigned agent and/or result summary. Omitted fields are left unchanged."
+    )]
+    async fn update_task(
+        &self,
+        Parameters(UpdateTaskParams {
+            task_id,
+            agent,
+            result_summary,
+        }): Parameters<UpdateTaskParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let state = self.state();
+        tool_result(tasks::update_task_fields(&state, &task_id, agent, result_summary).await)
     }
 }
 

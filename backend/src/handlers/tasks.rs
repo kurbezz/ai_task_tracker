@@ -104,6 +104,28 @@ pub async fn update_task(
     ))
 }
 
+pub(crate) async fn update_task_fields(
+    state: &AppState,
+    task_id: &str,
+    agent: Option<String>,
+    result_summary: Option<String>,
+) -> Result<TaskResponse, AppError> {
+    let task = fetch_task(state, task_id).await?;
+    let agent = agent.or(task.agent);
+    let result_summary = result_summary.or(task.result_summary);
+
+    sqlx::query("UPDATE tasks SET agent = ?, result_summary = ?, updated_at = ? WHERE id = ?")
+        .bind(&agent)
+        .bind(&result_summary)
+        .bind(Utc::now().to_rfc3339())
+        .bind(task_id)
+        .execute(&state.pool)
+        .await
+        .map_err(AppError::Internal)?;
+
+    task_response(state, fetch_task(state, task_id).await?).await
+}
+
 pub async fn list_project_tasks(
     State(state): State<AppState>,
     Path(project_id): Path<String>,
