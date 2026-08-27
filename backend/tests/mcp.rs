@@ -198,3 +198,87 @@ async fn list_projects_and_list_project_tasks_tools_return_created_data() {
     client.cancel().await.expect("cancel client");
     server.abort();
 }
+
+#[tokio::test]
+async fn transition_task_status_tool_enforces_workflow_rules() {
+    let (base_url, server) = support::spawn_http_server(support::state().await).await;
+    let project_id = create_project(&base_url).await;
+
+    let headers = support::api_key_header().into_iter().collect();
+    let transport = StreamableHttpClientTransport::with_client(
+        reqwest::Client::builder()
+            .default_headers(headers)
+            .build()
+            .expect("test client should build"),
+        StreamableHttpClientTransportConfig::with_uri(format!("{base_url}/mcp")),
+    );
+    let client = ClientInfo::default()
+        .serve(transport)
+        .await
+        .expect("client connects");
+
+    let create_args = serde_json::json!({ "project_id": project_id, "title": "Transition me" })
+        .as_object()
+        .cloned()
+        .expect("create args should be an object");
+    let created = client
+        .call_tool(CallToolRequestParam {
+            name: "create_task".into(),
+            arguments: Some(create_args),
+        })
+        .await
+        .expect("create_task should succeed");
+    let created_task: serde_json::Value = serde_json::from_str(
+        created
+            .content
+            .first()
+            .expect("content block")
+            .as_text()
+            .expect("text content")
+            .text
+            .as_str(),
+    )
+    .expect("valid task json");
+    let task_id = created_task["id"].as_str().expect("task id").to_owned();
+
+    let valid_args = serde_json::json!({ "task_id": task_id, "status": "IN_PLANNING" })
+        .as_object()
+        .cloned()
+        .expect("valid args should be an object");
+    let valid = client
+        .call_tool(CallToolRequestParam {
+            name: "transition_task_status".into(),
+            arguments: Some(valid_args),
+        })
+        .await
+        .expect("valid transition call should return a result");
+    assert_ne!(valid.is_error, Some(true));
+    let transitioned: serde_json::Value = serde_json::from_str(
+        valid
+            .content
+            .first()
+            .expect("content block")
+            .as_text()
+            .expect("text content")
+            .text
+            .as_str(),
+    )
+    .expect("valid task json");
+    assert_eq!(transitioned["status"], "IN_PLANNING");
+
+    let invalid_args = serde_json::json!({ "task_id": task_id, "status": "IN_WORK" })
+        .as_object()
+        .cloned()
+        .expect("invalid args should be an object");
+    let invalid = client
+        .call_tool(CallToolRequestParam {
+            name: "transition_task_status".into(),
+            arguments: Some(invalid_args),
+        })
+        .await
+        .expect("invalid transition should return a tool-level result");
+    assert_eq!(invalid.is_error, Some(true));
+
+    client.cancel().await.expect("cancel client");
+    server.abort();
+}

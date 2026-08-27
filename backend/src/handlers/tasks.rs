@@ -137,6 +137,14 @@ pub async fn transition_task(
     Path(id): Path<String>,
     Json(input): Json<TransitionRequest>,
 ) -> Result<Json<TaskResponse>, AppError> {
+    Ok(Json(transition_task_core(&state, &id, input.status).await?))
+}
+
+pub(crate) async fn transition_task_core(
+    state: &AppState,
+    id: &str,
+    target: Status,
+) -> Result<TaskResponse, AppError> {
     let mut connection = state.pool.acquire().await.map_err(AppError::Internal)?;
     sqlx::query("BEGIN IMMEDIATE")
         .execute(&mut *connection)
@@ -148,7 +156,7 @@ pub async fn transition_task(
             "SELECT id, project_id, title, description, status, agent, result_summary, created_at, updated_at \
              FROM tasks WHERE id = ?",
         )
-        .bind(&id)
+        .bind(id)
         .fetch_optional(&mut *connection)
         .await
         .map_err(AppError::Internal)?
@@ -157,10 +165,9 @@ pub async fn transition_task(
             .status
             .parse()
             .expect("database task statuses must be valid");
-        if !current.can_transition_to(input.status) {
+        if !current.can_transition_to(target) {
             return Err(AppError::InvalidTransition(format!(
-                "cannot transition from {current} to {}",
-                input.status
+                "cannot transition from {current} to {target}"
             )));
         }
 
@@ -168,26 +175,25 @@ pub async fn transition_task(
         let updated = sqlx::query(
             "UPDATE tasks SET status = ?, updated_at = ? WHERE id = ? AND status = ?",
         )
-        .bind(input.status.to_string())
+        .bind(target.to_string())
         .bind(&now)
-        .bind(&id)
+        .bind(id)
         .bind(current.to_string())
         .execute(&mut *connection)
         .await
         .map_err(AppError::Internal)?;
         if updated.rows_affected() == 0 {
             return Err(AppError::InvalidTransition(format!(
-                "cannot transition from {current} to {}",
-                input.status
+                "cannot transition from {current} to {target}"
             )));
         }
         sqlx::query(
             "INSERT INTO task_logs (id, task_id, author, message, created_at) VALUES (?, ?, ?, ?, ?)",
         )
         .bind(Uuid::new_v4().to_string())
-        .bind(&id)
+        .bind(id)
         .bind("system")
-        .bind(format!("Status changed from {current} to {}", input.status))
+        .bind(format!("Status changed from {current} to {target}"))
         .bind(now)
         .execute(&mut *connection)
         .await
@@ -210,9 +216,7 @@ pub async fn transition_task(
     }
     drop(connection);
 
-    Ok(Json(
-        task_response(&state, fetch_task(&state, &id).await?).await?,
-    ))
+    task_response(state, fetch_task(state, id).await?).await
 }
 
 pub async fn list_logs(

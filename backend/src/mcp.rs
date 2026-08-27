@@ -8,7 +8,7 @@ use sqlx::SqlitePool;
 use crate::{
     error::AppError,
     handlers::{projects, tasks},
-    models::CreateTask,
+    models::{CreateTask, Status},
     AppState,
 };
 
@@ -43,6 +43,12 @@ struct GetTaskParams {
 #[derive(serde::Deserialize, schemars::JsonSchema)]
 struct ListProjectTasksParams {
     project_id: String,
+}
+
+#[derive(serde::Deserialize, schemars::JsonSchema)]
+struct TransitionTaskStatusParams {
+    task_id: String,
+    status: Status,
 }
 
 #[derive(Clone)]
@@ -109,6 +115,19 @@ impl TaskMcpServer {
     ) -> Result<CallToolResult, McpError> {
         let state = self.state();
         tool_result(tasks::list_project_tasks_core(&state, &project_id).await)
+    }
+
+    #[tool(
+        description = "Move a task to a new workflow status. Only the next stage or any earlier stage (rework) is allowed."
+    )]
+    async fn transition_task_status(
+        &self,
+        Parameters(TransitionTaskStatusParams { task_id, status }): Parameters<
+            TransitionTaskStatusParams,
+        >,
+    ) -> Result<CallToolResult, McpError> {
+        let state = self.state();
+        tool_result(tasks::transition_task_core(&state, &task_id, status).await)
     }
 }
 
