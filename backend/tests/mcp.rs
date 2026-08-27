@@ -282,3 +282,79 @@ async fn transition_task_status_tool_enforces_workflow_rules() {
     client.cancel().await.expect("cancel client");
     server.abort();
 }
+
+#[tokio::test]
+async fn add_task_log_tool_appends_a_log_entry() {
+    let (base_url, server) = support::spawn_http_server(support::state().await).await;
+    let project_id = create_project(&base_url).await;
+
+    let headers = support::api_key_header().into_iter().collect();
+    let transport = StreamableHttpClientTransport::with_client(
+        reqwest::Client::builder()
+            .default_headers(headers)
+            .build()
+            .expect("test client should build"),
+        StreamableHttpClientTransportConfig::with_uri(format!("{base_url}/mcp")),
+    );
+    let client = ClientInfo::default()
+        .serve(transport)
+        .await
+        .expect("client connects");
+
+    let create_args = serde_json::json!({ "project_id": project_id, "title": "Log me" })
+        .as_object()
+        .cloned()
+        .expect("create args should be an object");
+    let created = client
+        .call_tool(CallToolRequestParam {
+            name: "create_task".into(),
+            arguments: Some(create_args),
+        })
+        .await
+        .expect("create_task should succeed");
+    let created_task: serde_json::Value = serde_json::from_str(
+        created
+            .content
+            .first()
+            .expect("content block")
+            .as_text()
+            .expect("text content")
+            .text
+            .as_str(),
+    )
+    .expect("valid task json");
+    let task_id = created_task["id"].as_str().expect("task id").to_owned();
+
+    let log_args = serde_json::json!({
+        "task_id": task_id,
+        "author": "fixer",
+        "message": "Started implementation"
+    })
+    .as_object()
+    .cloned()
+    .expect("log args should be an object");
+    let logged = client
+        .call_tool(CallToolRequestParam {
+            name: "add_task_log".into(),
+            arguments: Some(log_args),
+        })
+        .await
+        .expect("add_task_log should succeed");
+    assert_ne!(logged.is_error, Some(true));
+    let log: serde_json::Value = serde_json::from_str(
+        logged
+            .content
+            .first()
+            .expect("content block")
+            .as_text()
+            .expect("text content")
+            .text
+            .as_str(),
+    )
+    .expect("valid log json");
+    assert_eq!(log["author"], "fixer");
+    assert_eq!(log["message"], "Started implementation");
+
+    client.cancel().await.expect("cancel client");
+    server.abort();
+}

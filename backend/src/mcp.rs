@@ -8,7 +8,7 @@ use sqlx::SqlitePool;
 use crate::{
     error::AppError,
     handlers::{projects, tasks},
-    models::{CreateTask, Status},
+    models::{CreateLog, CreateTask, Status},
     AppState,
 };
 
@@ -49,6 +49,13 @@ struct ListProjectTasksParams {
 struct TransitionTaskStatusParams {
     task_id: String,
     status: Status,
+}
+
+#[derive(serde::Deserialize, schemars::JsonSchema)]
+struct AddTaskLogParams {
+    task_id: String,
+    author: String,
+    message: String,
 }
 
 #[derive(Clone)]
@@ -128,6 +135,19 @@ impl TaskMcpServer {
     ) -> Result<CallToolResult, McpError> {
         let state = self.state();
         tool_result(tasks::transition_task_core(&state, &task_id, status).await)
+    }
+
+    #[tool(description = "Append a log entry to a task's timeline")]
+    async fn add_task_log(
+        &self,
+        Parameters(AddTaskLogParams {
+            task_id,
+            author,
+            message,
+        }): Parameters<AddTaskLogParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let state = self.state();
+        tool_result(tasks::create_log_core(&state, &task_id, CreateLog { author, message }).await)
     }
 }
 

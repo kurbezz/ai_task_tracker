@@ -240,12 +240,23 @@ pub async fn create_log(
     Path(task_id): Path<String>,
     Json(input): Json<CreateLog>,
 ) -> Result<impl IntoResponse, AppError> {
-    fetch_task(&state, &task_id).await?;
+    Ok((
+        StatusCode::CREATED,
+        Json(create_log_core(&state, &task_id, input).await?),
+    ))
+}
+
+pub(crate) async fn create_log_core(
+    state: &AppState,
+    task_id: &str,
+    input: CreateLog,
+) -> Result<TaskLog, AppError> {
+    fetch_task(state, task_id).await?;
     validate_log(&input.author, &input.message)?;
 
     let log = TaskLog {
         id: Uuid::new_v4().to_string(),
-        task_id,
+        task_id: task_id.to_owned(),
         author: input.author,
         message: input.message,
         created_at: Utc::now().to_rfc3339(),
@@ -262,7 +273,7 @@ pub async fn create_log(
     .await
     .map_err(AppError::Internal)?;
 
-    Ok((StatusCode::CREATED, Json(log)))
+    Ok(log)
 }
 
 pub async fn attach_tag(
