@@ -25,7 +25,10 @@ hex = "0.4"
 rust-embed = "8"
 mime_guess = "2"
 http = "1"
+rmcp = { version = "=0.10.0", features = ["server", "transport-streamable-http-server", "client", "transport-streamable-http-client-reqwest"] }
+schemars = "1"
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }

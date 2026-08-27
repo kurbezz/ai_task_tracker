@@ -6,6 +6,8 @@ use axum::{
 };
 use http_body_util::BodyExt;
 use serde_json::Value;
+use std::collections::HashMap;
+use std::net::SocketAddr;
 use std::path::PathBuf;
 
 pub async fn state() -> AppState {
@@ -59,4 +61,27 @@ pub fn api_request(method: Method, uri: &str, body: Option<Value>) -> Request<Bo
 pub async fn json_body(response: Response) -> Value {
     let bytes = response.into_body().collect().await.unwrap().to_bytes();
     serde_json::from_slice(&bytes).unwrap()
+}
+
+#[allow(dead_code)]
+pub async fn spawn_http_server(state: AppState) -> (String, tokio::task::JoinHandle<()>) {
+    let router = ai_task_tracker::build_router(state);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+        .await
+        .expect("test listener should bind");
+    let addr: SocketAddr = listener.local_addr().expect("listener address");
+    let handle = tokio::spawn(async move {
+        let _ = axum::serve(listener, router).await;
+    });
+    (format!("http://{addr}"), handle)
+}
+
+#[allow(dead_code)]
+pub fn api_key_header() -> HashMap<http::HeaderName, http::HeaderValue> {
+    let mut headers = HashMap::new();
+    headers.insert(
+        http::HeaderName::from_static("x-api-key"),
+        http::HeaderValue::from_static("test-key"),
+    );
+    headers
 }

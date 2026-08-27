@@ -4,11 +4,15 @@ use axum::{
     routing::{delete, get, post},
     Router,
 };
+use rmcp::transport::streamable_http_server::{
+    session::local::LocalSessionManager, StreamableHttpServerConfig, StreamableHttpService,
+};
 
 pub mod auth;
 pub mod db;
 pub mod error;
 pub mod handlers;
+pub mod mcp;
 pub mod models;
 pub mod static_files;
 
@@ -60,9 +64,25 @@ pub fn build_router(state: AppState) -> Router {
             auth::require_api_key,
         ));
 
+    let mcp_pool = state.pool.clone();
+    let mcp: Router<AppState> = Router::new()
+        .nest_service(
+            "/mcp",
+            StreamableHttpService::new(
+                move || Ok(mcp::TaskMcpServer::new(mcp_pool.clone())),
+                LocalSessionManager::default().into(),
+                StreamableHttpServerConfig::default(),
+            ),
+        )
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            auth::require_api_key,
+        ));
+
     Router::new()
         .route("/health", get(|| async { "ok" }))
         .nest("/api", api)
+        .merge(mcp)
         .fallback(static_files::serve)
         .with_state(state)
 }
