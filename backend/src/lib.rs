@@ -23,13 +23,21 @@ pub struct AppState {
     pub pool: sqlx::SqlitePool,
 }
 
-const MCP_SESSION_KEEP_ALIVE: Duration = Duration::from_secs(5 * 60);
+const DEFAULT_MCP_SESSION_KEEP_ALIVE_SECS: u64 = 1800;
+
+fn mcp_session_keep_alive_from_env() -> Duration {
+    let seconds = std::env::var("MCP_SESSION_KEEP_ALIVE_SECS")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(DEFAULT_MCP_SESSION_KEEP_ALIVE_SECS);
+    Duration::from_secs(seconds)
+}
 
 pub fn build_router(state: AppState) -> Router {
     build_router_with_mcp_session_config(
         state,
         SessionConfig {
-            keep_alive: Some(MCP_SESSION_KEEP_ALIVE),
+            keep_alive: Some(mcp_session_keep_alive_from_env()),
             ..Default::default()
         },
     )
@@ -141,6 +149,25 @@ mod tests {
             .await
             .unwrap();
         AppState { pool }
+    }
+
+    #[test]
+    fn mcp_session_keep_alive_uses_environment_or_default() {
+        std::env::remove_var("MCP_SESSION_KEEP_ALIVE_SECS");
+        assert_eq!(
+            mcp_session_keep_alive_from_env(),
+            Duration::from_secs(DEFAULT_MCP_SESSION_KEEP_ALIVE_SECS)
+        );
+
+        std::env::set_var("MCP_SESSION_KEEP_ALIVE_SECS", "42");
+        assert_eq!(mcp_session_keep_alive_from_env(), Duration::from_secs(42));
+
+        std::env::set_var("MCP_SESSION_KEEP_ALIVE_SECS", "invalid");
+        assert_eq!(
+            mcp_session_keep_alive_from_env(),
+            Duration::from_secs(DEFAULT_MCP_SESSION_KEEP_ALIVE_SECS)
+        );
+        std::env::remove_var("MCP_SESSION_KEEP_ALIVE_SECS");
     }
 
     #[tokio::test]

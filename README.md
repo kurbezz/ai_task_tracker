@@ -35,7 +35,8 @@ cargo run --manifest-path backend/Cargo.toml
 ```
 
 The binary binds to `127.0.0.1:3000`. Set `DATABASE_URL` to choose another SQLite URL; it
-defaults to `sqlite:data/tracker.db`.
+defaults to `sqlite:data/tracker.db`. Set `MCP_SESSION_KEEP_ALIVE_SECS` to configure the MCP
+session idle timeout in seconds; it defaults to `1800` (30 minutes).
 
 ## Workflow and attention tags
 
