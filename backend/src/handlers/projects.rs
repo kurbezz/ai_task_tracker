@@ -14,6 +14,10 @@ use crate::{
 };
 
 pub async fn list_projects(State(state): State<AppState>) -> Result<Json<Vec<Project>>, AppError> {
+    Ok(Json(list_projects_core(&state).await?))
+}
+
+pub(crate) async fn list_projects_core(state: &AppState) -> Result<Vec<Project>, AppError> {
     let projects = sqlx::query_as::<_, Project>(
         "SELECT id, name, description, created_at FROM projects ORDER BY created_at",
     )
@@ -21,7 +25,7 @@ pub async fn list_projects(State(state): State<AppState>) -> Result<Json<Vec<Pro
     .await
     .map_err(AppError::Internal)?;
 
-    Ok(Json(projects))
+    Ok(projects)
 }
 
 pub async fn create_project(

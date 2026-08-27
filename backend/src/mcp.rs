@@ -5,7 +5,12 @@ use rmcp::{
 };
 use sqlx::SqlitePool;
 
-use crate::{error::AppError, handlers::tasks, models::CreateTask, AppState};
+use crate::{
+    error::AppError,
+    handlers::{projects, tasks},
+    models::CreateTask,
+    AppState,
+};
 
 fn json_result<T: serde::Serialize>(value: &T) -> Result<CallToolResult, McpError> {
     let text = serde_json::to_string(value)
@@ -33,6 +38,11 @@ fn tool_result<T: serde::Serialize>(
 #[derive(serde::Deserialize, schemars::JsonSchema)]
 struct GetTaskParams {
     task_id: String,
+}
+
+#[derive(serde::Deserialize, schemars::JsonSchema)]
+struct ListProjectTasksParams {
+    project_id: String,
 }
 
 #[derive(Clone)]
@@ -84,6 +94,21 @@ impl TaskMcpServer {
         }
         .await;
         tool_result(result)
+    }
+
+    #[tool(description = "List all projects")]
+    async fn list_projects(&self) -> Result<CallToolResult, McpError> {
+        let state = self.state();
+        tool_result(projects::list_projects_core(&state).await)
+    }
+
+    #[tool(description = "List all tasks in a project")]
+    async fn list_project_tasks(
+        &self,
+        Parameters(ListProjectTasksParams { project_id }): Parameters<ListProjectTasksParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let state = self.state();
+        tool_result(tasks::list_project_tasks_core(&state, &project_id).await)
     }
 }
 

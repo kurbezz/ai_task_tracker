@@ -129,3 +129,72 @@ async fn create_task_and_get_task_tools_round_trip() {
     client.cancel().await.expect("cancel client");
     server.abort();
 }
+
+#[tokio::test]
+async fn list_projects_and_list_project_tasks_tools_return_created_data() {
+    let (base_url, server) = support::spawn_http_server(support::state().await).await;
+    let project_id = create_project(&base_url).await;
+
+    let headers = support::api_key_header().into_iter().collect();
+    let transport = StreamableHttpClientTransport::with_client(
+        reqwest::Client::builder()
+            .default_headers(headers)
+            .build()
+            .expect("test client should build"),
+        StreamableHttpClientTransportConfig::with_uri(format!("{base_url}/mcp")),
+    );
+    let client = ClientInfo::default()
+        .serve(transport)
+        .await
+        .expect("client connects");
+
+    let list_projects_result = client
+        .call_tool(CallToolRequestParam {
+            name: "list_projects".into(),
+            arguments: Some(serde_json::json!({}).as_object().cloned().unwrap()),
+        })
+        .await
+        .expect("list_projects should succeed");
+    let projects_text = list_projects_result.content.first().expect("content block");
+    let projects: serde_json::Value =
+        serde_json::from_str(projects_text.as_text().expect("text content").text.as_str())
+            .expect("valid projects json");
+    assert!(projects
+        .as_array()
+        .expect("projects array")
+        .iter()
+        .any(|project| project["id"] == project_id));
+
+    let create_args = serde_json::json!({ "project_id": project_id, "title": "Task in project" })
+        .as_object()
+        .cloned()
+        .expect("create args should be an object");
+    client
+        .call_tool(CallToolRequestParam {
+            name: "create_task".into(),
+            arguments: Some(create_args),
+        })
+        .await
+        .expect("create_task should succeed");
+
+    let list_tasks_args = serde_json::json!({ "project_id": project_id })
+        .as_object()
+        .cloned()
+        .expect("list task args should be an object");
+    let list_tasks_result = client
+        .call_tool(CallToolRequestParam {
+            name: "list_project_tasks".into(),
+            arguments: Some(list_tasks_args),
+        })
+        .await
+        .expect("list_project_tasks should succeed");
+    let tasks_text = list_tasks_result.content.first().expect("content block");
+    let tasks: serde_json::Value =
+        serde_json::from_str(tasks_text.as_text().expect("text content").text.as_str())
+            .expect("valid tasks json");
+    assert_eq!(tasks.as_array().expect("tasks array").len(), 1);
+    assert_eq!(tasks[0]["title"], "Task in project");
+
+    client.cancel().await.expect("cancel client");
+    server.abort();
+}

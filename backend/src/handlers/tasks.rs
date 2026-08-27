@@ -108,7 +108,14 @@ pub async fn list_project_tasks(
     State(state): State<AppState>,
     Path(project_id): Path<String>,
 ) -> Result<Json<Vec<TaskResponse>>, AppError> {
-    ensure_project(&state, &project_id).await?;
+    Ok(Json(list_project_tasks_core(&state, &project_id).await?))
+}
+
+pub(crate) async fn list_project_tasks_core(
+    state: &AppState,
+    project_id: &str,
+) -> Result<Vec<TaskResponse>, AppError> {
+    ensure_project(state, project_id).await?;
     let tasks = sqlx::query_as::<_, Task>(
         "SELECT id, project_id, title, description, status, agent, result_summary, created_at, updated_at \
          FROM tasks WHERE project_id = ? ORDER BY created_at",
@@ -120,9 +127,9 @@ pub async fn list_project_tasks(
 
     let mut responses = Vec::with_capacity(tasks.len());
     for task in tasks {
-        responses.push(task_response(&state, task).await?);
+        responses.push(task_response(state, task).await?);
     }
-    Ok(Json(responses))
+    Ok(responses)
 }
 
 pub async fn transition_task(
