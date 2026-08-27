@@ -11,9 +11,8 @@ async fn main() {
     let pool = connect(&database_url).await.unwrap();
     migrate(&pool).await.unwrap();
     ensure_initial_api_key(&pool).await.unwrap();
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:3000")
-        .await
-        .unwrap();
+    let bind_addr = std::env::var("BIND_ADDR").unwrap_or_else(|_| "127.0.0.1:3000".to_owned());
+    let listener = tokio::net::TcpListener::bind(&bind_addr).await.unwrap();
     axum::serve(listener, build_router(AppState { pool }))
         .await
         .unwrap();

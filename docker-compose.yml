@@ -1,0 +1,13 @@
+services:
+  app:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: sqlite:data/tracker.db
+      BIND_ADDR: 0.0.0.0:3000
+    volumes:
+      - tracker-data:/app/data
+
+volumes:
+  tracker-data:

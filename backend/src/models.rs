@@ -21,15 +21,11 @@ pub struct UpdateProject {
     pub description: PatchField<String>,
 }
 
+#[derive(Default)]
 pub enum PatchField<T> {
+    #[default]
     Omitted,
     Value(Option<T>),
-}
-
-impl<T> Default for PatchField<T> {
-    fn default() -> Self {
-        Self::Omitted
-    }
 }
 
 impl<'de, T> Deserialize<'de> for PatchField<T>

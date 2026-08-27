@@ -22,6 +22,7 @@ pub async fn state() -> AppState {
     AppState { pool }
 }
 
+#[allow(dead_code)]
 pub async fn file_state() -> (AppState, PathBuf) {
     let path = std::env::temp_dir().join(format!("ai-task-tracker-{}.db", uuid::Uuid::new_v4()));
     let pool = db::connect(&format!("sqlite:{}", path.display()))
@@ -39,6 +40,7 @@ pub async fn file_state() -> (AppState, PathBuf) {
     (AppState { pool }, path)
 }
 
+#[allow(dead_code)]
 pub fn api_request(method: Method, uri: &str, body: Option<Value>) -> Request<Body> {
     let mut builder = Request::builder()
         .method(method)
