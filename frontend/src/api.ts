@@ -27,6 +27,10 @@ function json(method: string, body: unknown): RequestInit {
 export const listProjects = () => request<Project[]>("/projects");
 export const createProject = (project: { name: string; description?: string }) =>
   request<Project>("/projects", json("POST", project));
+export const updateProject = (projectId: string, changes: Partial<Pick<Project, "name" | "description">>) =>
+  request<Project>(`/projects/${projectId}`, json("PATCH", changes));
+export const deleteProject = (projectId: string) =>
+  request<void>(`/projects/${projectId}`, { method: "DELETE" });
 export const listProjectTasks = (projectId: string) => request<Task[]>(`/projects/${projectId}/tasks`);
 export const createTask = (task: {
   project_id: string;

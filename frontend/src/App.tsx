@@ -34,7 +34,8 @@ export default function App() {
           <span>relay</span>
         </NavLink>
         {apiKey && <nav aria-label="Main navigation">
-          <NavLink end to="/">Projects</NavLink>
+          <NavLink end to="/">Board</NavLink>
+          <NavLink to="/projects">Projects</NavLink>
           <NavLink to="/attention">Attention queue</NavLink>
         </nav>}
         <span className="topbar-note">AI work, in motion</span>
@@ -42,8 +43,8 @@ export default function App() {
       </header>
       <main>
         {apiKey ? <Routes>
-          <Route path="/" element={<ProjectsPage />} />
-          <Route path="/projects/:projectId" element={<BoardPage />} />
+          <Route path="/" element={<BoardPage />} />
+          <Route path="/projects" element={<ProjectsPage />} />
           <Route path="/attention" element={<AttentionPage />} />
         </Routes> : <ApiKeyOnboarding onSave={handleKeySaved} />}
       </main>

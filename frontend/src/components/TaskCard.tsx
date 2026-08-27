@@ -4,11 +4,13 @@ import { TagBadge } from "./TagBadge";
 interface TaskCardProps {
   task: Task;
   onSelect: (taskId: string) => void;
+  projectName?: string;
 }
 
-export function TaskCard({ task, onSelect }: TaskCardProps) {
+export function TaskCard({ task, onSelect, projectName }: TaskCardProps) {
   return (
     <button className="task-card" onClick={() => onSelect(task.id)} type="button">
+      {projectName && <span className="task-project">{projectName}</span>}
       <span className="task-card-title">{task.title}</span>
       {task.agent && <span className="task-agent">Agent: {task.agent}</span>}
       {task.tags.length > 0 && (
