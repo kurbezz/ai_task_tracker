@@ -58,6 +58,18 @@ struct AddTaskLogParams {
     message: String,
 }
 
+#[derive(serde::Deserialize, schemars::JsonSchema)]
+struct AddTaskTagParams {
+    task_id: String,
+    name: String,
+}
+
+#[derive(serde::Deserialize, schemars::JsonSchema)]
+struct RemoveTaskTagParams {
+    task_id: String,
+    tag_id: String,
+}
+
 #[derive(Clone)]
 pub struct TaskMcpServer {
     pool: SqlitePool,
@@ -148,6 +160,29 @@ impl TaskMcpServer {
     ) -> Result<CallToolResult, McpError> {
         let state = self.state();
         tool_result(tasks::create_log_core(&state, &task_id, CreateLog { author, message }).await)
+    }
+
+    #[tool(
+        description = "Attach a tag to a task (e.g. NEEDS_USER_INPUT, BLOCKED, FAILED, or a custom name). Idempotent."
+    )]
+    async fn add_task_tag(
+        &self,
+        Parameters(AddTaskTagParams { task_id, name }): Parameters<AddTaskTagParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let state = self.state();
+        tool_result(tasks::attach_tag_core(&state, &task_id, name).await)
+    }
+
+    #[tool(description = "Remove a tag from a task")]
+    async fn remove_task_tag(
+        &self,
+        Parameters(RemoveTaskTagParams { task_id, tag_id }): Parameters<RemoveTaskTagParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let state = self.state();
+        match tasks::remove_tag_core(&state, &task_id, &tag_id).await {
+            Ok(()) => Ok(CallToolResult::success(vec![Content::text("removed")])),
+            Err(error) => tool_result::<()>(Err(error)),
+        }
     }
 }
 

@@ -281,48 +281,63 @@ pub async fn attach_tag(
     Path(task_id): Path<String>,
     Json(input): Json<AttachTag>,
 ) -> Result<Json<TaskResponse>, AppError> {
-    fetch_task(&state, &task_id).await?;
-    validate_tag_name(&input.name)?;
+    Ok(Json(attach_tag_core(&state, &task_id, input.name).await?))
+}
+
+pub(crate) async fn attach_tag_core(
+    state: &AppState,
+    task_id: &str,
+    name: String,
+) -> Result<TaskResponse, AppError> {
+    fetch_task(state, task_id).await?;
+    validate_tag_name(&name)?;
 
     sqlx::query(
         "INSERT INTO tags (id, name, is_system) VALUES (?, ?, 0) ON CONFLICT(name) DO NOTHING",
     )
     .bind(Uuid::new_v4().to_string())
-    .bind(&input.name)
+    .bind(&name)
     .execute(&state.pool)
     .await
     .map_err(AppError::Internal)?;
     let tag: Tag = sqlx::query_as("SELECT id, name, is_system FROM tags WHERE name = ?")
-        .bind(&input.name)
+        .bind(&name)
         .fetch_one(&state.pool)
         .await
         .map_err(AppError::Internal)?;
     sqlx::query(
         "INSERT INTO task_tags (task_id, tag_id) VALUES (?, ?) ON CONFLICT(task_id, tag_id) DO NOTHING",
     )
-    .bind(&task_id)
+    .bind(task_id)
     .bind(&tag.id)
     .execute(&state.pool)
     .await
     .map_err(AppError::Internal)?;
 
-    Ok(Json(
-        task_response(&state, fetch_task(&state, &task_id).await?).await?,
-    ))
+    task_response(state, fetch_task(state, task_id).await?).await
 }
 
 pub async fn remove_tag(
     State(state): State<AppState>,
     Path((task_id, tag_id)): Path<(String, String)>,
 ) -> Result<StatusCode, AppError> {
-    fetch_task(&state, &task_id).await?;
+    remove_tag_core(&state, &task_id, &tag_id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub(crate) async fn remove_tag_core(
+    state: &AppState,
+    task_id: &str,
+    tag_id: &str,
+) -> Result<(), AppError> {
+    fetch_task(state, task_id).await?;
     sqlx::query("DELETE FROM task_tags WHERE task_id = ? AND tag_id = ?")
         .bind(task_id)
         .bind(tag_id)
         .execute(&state.pool)
         .await
         .map_err(AppError::Internal)?;
-    Ok(StatusCode::NO_CONTENT)
+    Ok(())
 }
 
 pub async fn list_attention(

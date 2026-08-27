@@ -358,3 +358,123 @@ async fn add_task_log_tool_appends_a_log_entry() {
     client.cancel().await.expect("cancel client");
     server.abort();
 }
+
+#[tokio::test]
+async fn add_task_tag_and_remove_task_tag_tools_manage_tags() {
+    let (base_url, server) = support::spawn_http_server(support::state().await).await;
+    let project_id = create_project(&base_url).await;
+
+    let headers = support::api_key_header().into_iter().collect();
+    let transport = StreamableHttpClientTransport::with_client(
+        reqwest::Client::builder()
+            .default_headers(headers)
+            .build()
+            .expect("test client should build"),
+        StreamableHttpClientTransportConfig::with_uri(format!("{base_url}/mcp")),
+    );
+    let client = ClientInfo::default()
+        .serve(transport)
+        .await
+        .expect("client connects");
+
+    let create_args = serde_json::json!({ "project_id": project_id, "title": "Tag me" })
+        .as_object()
+        .cloned()
+        .expect("create args should be an object");
+    let created = client
+        .call_tool(CallToolRequestParam {
+            name: "create_task".into(),
+            arguments: Some(create_args),
+        })
+        .await
+        .expect("create_task should succeed");
+    let created_task: serde_json::Value = serde_json::from_str(
+        created
+            .content
+            .first()
+            .expect("content block")
+            .as_text()
+            .expect("text content")
+            .text
+            .as_str(),
+    )
+    .expect("valid task json");
+    let task_id = created_task["id"].as_str().expect("task id").to_owned();
+
+    let add_args = serde_json::json!({
+        "task_id": task_id.clone(),
+        "name": "NEEDS_USER_INPUT"
+    })
+    .as_object()
+    .cloned()
+    .expect("add tag args should be an object");
+    let tagged = client
+        .call_tool(CallToolRequestParam {
+            name: "add_task_tag".into(),
+            arguments: Some(add_args),
+        })
+        .await
+        .expect("add_task_tag should succeed");
+    assert_ne!(tagged.is_error, Some(true));
+    let tagged_task: serde_json::Value = serde_json::from_str(
+        tagged
+            .content
+            .first()
+            .expect("content block")
+            .as_text()
+            .expect("text content")
+            .text
+            .as_str(),
+    )
+    .expect("valid task json");
+    let tags = tagged_task["tags"].as_array().expect("tags array");
+    assert_eq!(tags.len(), 1);
+    assert_eq!(tags[0]["name"], "NEEDS_USER_INPUT");
+    let tag_id = tags[0]["id"].as_str().expect("tag id").to_owned();
+
+    let remove_args = serde_json::json!({
+        "task_id": task_id.clone(),
+        "tag_id": tag_id
+    })
+    .as_object()
+    .cloned()
+    .expect("remove tag args should be an object");
+    let removed = client
+        .call_tool(CallToolRequestParam {
+            name: "remove_task_tag".into(),
+            arguments: Some(remove_args),
+        })
+        .await
+        .expect("remove_task_tag should succeed");
+    assert_ne!(removed.is_error, Some(true));
+
+    let get_args = serde_json::json!({ "task_id": task_id })
+        .as_object()
+        .cloned()
+        .expect("get args should be an object");
+    let refetched = client
+        .call_tool(CallToolRequestParam {
+            name: "get_task".into(),
+            arguments: Some(get_args),
+        })
+        .await
+        .expect("get_task should succeed");
+    let refetched_task: serde_json::Value = serde_json::from_str(
+        refetched
+            .content
+            .first()
+            .expect("content block")
+            .as_text()
+            .expect("text content")
+            .text
+            .as_str(),
+    )
+    .expect("valid task json");
+    assert!(refetched_task["tags"]
+        .as_array()
+        .expect("tags array")
+        .is_empty());
+
+    client.cancel().await.expect("cancel client");
+    server.abort();
+}
