@@ -58,6 +58,7 @@ pub fn api_request(method: Method, uri: &str, body: Option<Value>) -> Request<Bo
     builder.body(body).unwrap()
 }
 
+#[allow(dead_code)]
 pub async fn json_body(response: Response) -> Value {
     let bytes = response.into_body().collect().await.unwrap().to_bytes();
     serde_json::from_slice(&bytes).unwrap()
