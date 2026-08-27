@@ -50,7 +50,9 @@ fn build_router_with_mcp_session_config(state: AppState, session_config: Session
         .route("/tasks", post(handlers::tasks::create_task))
         .route(
             "/tasks/:id",
-            get(handlers::tasks::get_task).patch(handlers::tasks::update_task),
+            get(handlers::tasks::get_task)
+                .patch(handlers::tasks::update_task)
+                .delete(handlers::tasks::delete_task),
         )
         .route(
             "/projects/:id/tasks",

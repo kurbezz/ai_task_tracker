@@ -74,6 +74,28 @@ pub async fn get_task(
     ))
 }
 
+pub async fn delete_task(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<StatusCode, AppError> {
+    delete_task_core(&state, &id).await?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+pub(crate) async fn delete_task_core(state: &AppState, id: &str) -> Result<(), AppError> {
+    let result = sqlx::query("DELETE FROM tasks WHERE id = ?")
+        .bind(id)
+        .execute(&state.pool)
+        .await
+        .map_err(AppError::Internal)?;
+
+    if result.rows_affected() == 0 {
+        return Err(AppError::NotFound);
+    }
+
+    Ok(())
+}
+
 pub async fn update_task(
     State(state): State<AppState>,
     Path(id): Path<String>,

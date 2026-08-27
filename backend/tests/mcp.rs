@@ -148,6 +148,101 @@ async fn create_task_and_get_task_tools_round_trip() {
 }
 
 #[tokio::test]
+async fn delete_task_tool_removes_a_task() {
+    let (base_url, server) = support::spawn_http_server(support::state().await).await;
+    let project_id = create_project(&base_url).await;
+
+    let headers = support::api_key_header().into_iter().collect();
+    let transport = StreamableHttpClientTransport::with_client(
+        reqwest::Client::builder()
+            .default_headers(headers)
+            .build()
+            .expect("test client should build"),
+        StreamableHttpClientTransportConfig::with_uri(format!("{base_url}/mcp")),
+    );
+    let client = ClientInfo::default()
+        .serve(transport)
+        .await
+        .expect("client connects");
+
+    let create_args = serde_json::json!({
+        "project_id": project_id,
+        "title": "Delete through MCP"
+    })
+    .as_object()
+    .cloned()
+    .expect("create args should be an object");
+    let created = client
+        .call_tool(CallToolRequestParam {
+            name: "create_task".into(),
+            arguments: Some(create_args),
+        })
+        .await
+        .expect("create_task should succeed");
+    let created_task: serde_json::Value = serde_json::from_str(
+        created
+            .content
+            .first()
+            .expect("content block")
+            .as_text()
+            .expect("text content")
+            .text
+            .as_str(),
+    )
+    .expect("valid task json");
+    let task_id = created_task["id"].as_str().expect("task id").to_owned();
+
+    let delete_args = serde_json::json!({ "task_id": task_id })
+        .as_object()
+        .cloned()
+        .expect("delete args should be an object");
+    let deleted = client
+        .call_tool(CallToolRequestParam {
+            name: "delete_task".into(),
+            arguments: Some(delete_args),
+        })
+        .await
+        .expect("delete_task should succeed");
+    assert_ne!(deleted.is_error, Some(true));
+    assert_eq!(
+        deleted
+            .content
+            .first()
+            .expect("content block")
+            .as_text()
+            .expect("text content")
+            .text,
+        "deleted"
+    );
+
+    let get_args = serde_json::json!({ "task_id": task_id })
+        .as_object()
+        .cloned()
+        .expect("get args should be an object");
+    let fetched = client
+        .call_tool(CallToolRequestParam {
+            name: "get_task".into(),
+            arguments: Some(get_args),
+        })
+        .await
+        .expect("get_task should return a tool-level error");
+    assert_eq!(fetched.is_error, Some(true));
+    assert_eq!(
+        fetched
+            .content
+            .first()
+            .expect("content block")
+            .as_text()
+            .expect("text content")
+            .text,
+        "not found"
+    );
+
+    client.cancel().await.expect("cancel client");
+    server.abort();
+}
+
+#[tokio::test]
 async fn list_projects_and_list_project_tasks_tools_return_created_data() {
     let (base_url, server) = support::spawn_http_server(support::state().await).await;
     let project_id = create_project(&base_url).await;

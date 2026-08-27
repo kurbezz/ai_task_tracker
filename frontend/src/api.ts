@@ -43,6 +43,8 @@ export const updateTask = (
   taskId: string,
   changes: Partial<Pick<Task, "title" | "description" | "agent" | "result_summary">>,
 ) => request<Task>(`/tasks/${taskId}`, json("PATCH", changes));
+export const deleteTask = (taskId: string) =>
+  request<void>(`/tasks/${taskId}`, { method: "DELETE" });
 export const transitionTask = (taskId: string, status: Status) =>
   request<Task>(`/tasks/${taskId}/status`, json("POST", { status }));
 export const listLogs = (taskId: string) => request<TaskLog[]>(`/tasks/${taskId}/logs`);

@@ -135,6 +135,88 @@ async fn validates_task_creation_and_missing_resources() {
 }
 
 #[tokio::test]
+async fn deletes_tasks_and_cascades_logs_and_tags() {
+    let state = support::state().await;
+    let pool = state.pool.clone();
+    let app = ai_task_tracker::build_router(state);
+    let project = create_project(&app).await;
+    let task = create_task(&app, project["id"].as_str().unwrap()).await;
+    let task_id = task["id"].as_str().unwrap().to_owned();
+
+    let response = app
+        .clone()
+        .oneshot(support::api_request(
+            Method::POST,
+            &format!("/api/tasks/{task_id}/tags"),
+            Some(json!({"name": "cascade-test"})),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let response = app
+        .clone()
+        .oneshot(support::api_request(
+            Method::POST,
+            &format!("/api/tasks/{task_id}/logs"),
+            Some(json!({"author": "test", "message": "Delete me"})),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::CREATED);
+
+    let response = app
+        .clone()
+        .oneshot(support::api_request(
+            Method::DELETE,
+            &format!("/api/tasks/{task_id}"),
+            None,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NO_CONTENT);
+
+    let response = app
+        .clone()
+        .oneshot(support::api_request(
+            Method::GET,
+            &format!("/api/tasks/{task_id}"),
+            None,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+    let logs: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM task_logs WHERE task_id = ?")
+        .bind(&task_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(logs, 0);
+    let tags: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM task_tags WHERE task_id = ?")
+        .bind(&task_id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(tags, 0);
+}
+
+#[tokio::test]
+async fn deleting_a_missing_task_returns_not_found() {
+    let app = ai_task_tracker::build_router(support::state().await);
+
+    let response = app
+        .oneshot(support::api_request(
+            Method::DELETE,
+            "/api/tasks/missing",
+            None,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
 async fn transitions_tasks_and_records_system_logs() {
     let state = support::state().await;
     let pool = state.pool.clone();

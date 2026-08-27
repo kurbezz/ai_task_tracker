@@ -1,5 +1,5 @@
 import { FormEvent, useEffect, useState } from "react";
-import { addLog, addTag, getTask, listLogs, removeTag, transitionTask, updateTask } from "../api";
+import { addLog, addTag, deleteTask, getTask, listLogs, removeTag, transitionTask, updateTask } from "../api";
 import { STATUS_LABELS, STATUS_ORDER, type Status, type Task, type TaskLog } from "../types";
 import { TagBadge } from "./TagBadge";
 
@@ -42,13 +42,17 @@ export function TaskDetail({ taskId, onClose, onTaskChange }: TaskDetailProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskId]);
 
-  async function mutate(action: string, operation: () => Promise<unknown>, keepInput = false) {
+  async function mutate(action: string, operation: () => Promise<unknown>, keepInput = false, afterSuccess?: () => Promise<void> | void) {
     setError("");
     setBusy(action);
     try {
       await operation();
-      await refresh();
-      await onTaskChange();
+      if (afterSuccess) {
+        await afterSuccess();
+      } else {
+        await refresh();
+        await onTaskChange();
+      }
       if (!keepInput && action === "add-log") { setLogAuthor(""); setLogMessage(""); }
       if (!keepInput && action === "add-tag") setTagName("");
     } catch (reason) {
@@ -71,6 +75,14 @@ export function TaskDetail({ taskId, onClose, onTaskChange }: TaskDetailProps) {
   function submitTag(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     mutate("add-tag", () => addTag(taskId, tagName));
+  }
+
+  function removeTask() {
+    if (!window.confirm("Delete this task? This cannot be undone.")) return;
+    mutate("delete", () => deleteTask(taskId), true, async () => {
+      onClose();
+      await onTaskChange();
+    });
   }
 
   const currentIndex = task ? STATUS_ORDER.indexOf(task.status) : 0;
@@ -99,6 +111,7 @@ export function TaskDetail({ taskId, onClose, onTaskChange }: TaskDetailProps) {
             <label>Agent<input value={agent} onChange={(event) => setAgent(event.target.value)} placeholder="e.g. coding-agent" /></label>
             <label>Result summary<textarea rows={3} value={result} onChange={(event) => setResult(event.target.value)} placeholder="What did the work produce?" /></label>
             <button className="button button-secondary" disabled={busy !== ""}>{busy === "save" ? "Saving…" : "Save details"}</button>
+            <button className="button button-quiet" type="button" disabled={busy !== ""} onClick={removeTask}>{busy === "delete" ? "Deleting…" : "Delete task"}</button>
           </form>
 
           <section className="detail-section"><h3>Tags</h3>

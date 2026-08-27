@@ -128,6 +128,18 @@ impl TaskMcpServer {
         tool_result(result)
     }
 
+    #[tool(description = "Delete a task by id")]
+    async fn delete_task(
+        &self,
+        Parameters(GetTaskParams { task_id }): Parameters<GetTaskParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let state = self.state();
+        match tasks::delete_task_core(&state, &task_id).await {
+            Ok(()) => Ok(CallToolResult::success(vec![Content::text("deleted")])),
+            Err(error) => tool_result::<()>(Err(error)),
+        }
+    }
+
     #[tool(description = "List all projects")]
     async fn list_projects(&self) -> Result<CallToolResult, McpError> {
         let state = self.state();
