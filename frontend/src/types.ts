@@ -42,6 +42,8 @@ export interface Task {
   status: Status;
   agent: string | null;
   result_summary: string | null;
+  source_url: string | null;
+  pr_url: string | null;
   created_at: string;
   updated_at: string;
   tags: Tag[];

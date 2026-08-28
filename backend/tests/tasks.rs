@@ -318,6 +318,97 @@ async fn task_patch_distinguishes_omitted_and_null_optional_fields() {
 }
 
 #[tokio::test]
+async fn task_source_and_pr_urls_round_trip_through_get() {
+    let app = ai_task_tracker::build_router(support::state().await);
+    let project = create_project(&app).await;
+    let response = app
+        .clone()
+        .oneshot(support::api_request(
+            Method::POST,
+            "/api/tasks",
+            Some(json!({
+                "project_id": project["id"],
+                "title": "Linked task",
+                "source_url": "https://youtrack.example/issues/123",
+                "pr_url": "https://github.example/pull/456"
+            })),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::CREATED);
+    let created = support::json_body(response).await;
+    let task_id = created["id"].as_str().unwrap();
+
+    let response = app
+        .oneshot(support::api_request(
+            Method::GET,
+            &format!("/api/tasks/{task_id}"),
+            None,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let fetched = support::json_body(response).await;
+    assert_eq!(fetched["source_url"], "https://youtrack.example/issues/123");
+    assert_eq!(fetched["pr_url"], "https://github.example/pull/456");
+}
+
+#[tokio::test]
+async fn task_patch_sets_updates_and_clears_source_and_pr_urls() {
+    let app = ai_task_tracker::build_router(support::state().await);
+    let project = create_project(&app).await;
+    let task = create_task(&app, project["id"].as_str().unwrap()).await;
+    let task_id = task["id"].as_str().unwrap();
+
+    let response = app
+        .clone()
+        .oneshot(support::api_request(
+            Method::PATCH,
+            &format!("/api/tasks/{task_id}"),
+            Some(json!({
+                "source_url": "https://youtrack.example/issues/123",
+                "pr_url": "https://github.example/pull/456"
+            })),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let set = support::json_body(response).await;
+    assert_eq!(set["source_url"], "https://youtrack.example/issues/123");
+    assert_eq!(set["pr_url"], "https://github.example/pull/456");
+
+    let response = app
+        .clone()
+        .oneshot(support::api_request(
+            Method::PATCH,
+            &format!("/api/tasks/{task_id}"),
+            Some(json!({
+                "source_url": "https://sentry.example/issues/789",
+                "pr_url": "https://github.example/pull/101"
+            })),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let updated = support::json_body(response).await;
+    assert_eq!(updated["source_url"], "https://sentry.example/issues/789");
+    assert_eq!(updated["pr_url"], "https://github.example/pull/101");
+
+    let response = app
+        .oneshot(support::api_request(
+            Method::PATCH,
+            &format!("/api/tasks/{task_id}"),
+            Some(json!({"source_url": null, "pr_url": null})),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let cleared = support::json_body(response).await;
+    assert_eq!(cleared["source_url"], json!(null));
+    assert_eq!(cleared["pr_url"], json!(null));
+}
+
+#[tokio::test]
 async fn duplicate_transitions_do_not_create_extra_status_logs() {
     let (state, database_path) = support::file_state().await;
     let pool = state.pool.clone();

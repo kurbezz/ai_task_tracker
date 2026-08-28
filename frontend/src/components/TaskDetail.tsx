@@ -22,6 +22,8 @@ export function TaskDetail({ taskId, onClose, onTaskChange }: TaskDetailProps) {
   const [loading, setLoading] = useState(true);
   const [agent, setAgent] = useState("");
   const [result, setResult] = useState("");
+  const [sourceUrl, setSourceUrl] = useState("");
+  const [prUrl, setPrUrl] = useState("");
   const [logAuthor, setLogAuthor] = useState("");
   const [logMessage, setLogMessage] = useState("");
   const [tagName, setTagName] = useState("");
@@ -34,6 +36,8 @@ export function TaskDetail({ taskId, onClose, onTaskChange }: TaskDetailProps) {
     setLogs(nextLogs);
     setAgent(nextTask.agent ?? "");
     setResult(nextTask.result_summary ?? "");
+    setSourceUrl(nextTask.source_url ?? "");
+    setPrUrl(nextTask.pr_url ?? "");
   }
 
   useEffect(() => {
@@ -49,6 +53,8 @@ export function TaskDetail({ taskId, onClose, onTaskChange }: TaskDetailProps) {
       setTask((current) => current ? { ...current, ...event.task } : event.task);
       setAgent(event.task.agent ?? "");
       setResult(event.task.result_summary ?? "");
+      setSourceUrl(event.task.source_url ?? "");
+      setPrUrl(event.task.pr_url ?? "");
     } else if (event.type === "log_added" && event.task_id === taskId) {
       setLogs((current) => [...current, event.log]);
     } else if (event.type === "task_deleted" && event.task_id === taskId) {
@@ -82,7 +88,12 @@ export function TaskDetail({ taskId, onClose, onTaskChange }: TaskDetailProps) {
 
   function saveDetails(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    mutate("save", () => updateTask(taskId, { agent: agent.trim() || null, result_summary: result.trim() || null }), true);
+    mutate("save", () => updateTask(taskId, {
+      agent: agent.trim() || null,
+      result_summary: result.trim() || null,
+      source_url: sourceUrl.trim() || null,
+      pr_url: prUrl.trim() || null,
+    }), true);
   }
 
   function submitLog(event: FormEvent<HTMLFormElement>) {
@@ -150,6 +161,8 @@ export function TaskDetail({ taskId, onClose, onTaskChange }: TaskDetailProps) {
             <h3>Assignment & outcome</h3>
             <label>Agent<input value={agent} onChange={(event) => setAgent(event.target.value)} placeholder="e.g. coding-agent" /></label>
             <label>Result summary<textarea rows={3} value={result} onChange={(event) => setResult(event.target.value)} placeholder="What did the work produce?" /></label>
+            <label>Source link<input value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} placeholder="https://…" />{task.source_url && <a href={task.source_url} target="_blank" rel="noreferrer">Open ↗</a>}</label>
+            <label>PR link<input value={prUrl} onChange={(event) => setPrUrl(event.target.value)} placeholder="https://…" />{task.pr_url && <a href={task.pr_url} target="_blank" rel="noreferrer">Open ↗</a>}</label>
             <button className="button button-secondary" disabled={busy !== ""}>{busy === "save" ? "Saving…" : "Save details"}</button>
             <button className="button button-quiet" type="button" disabled={busy !== ""} onClick={removeTask}>{busy === "delete" ? "Deleting…" : "Delete task"}</button>
           </form>

@@ -76,6 +76,8 @@ struct UpdateTaskParams {
     task_id: String,
     agent: Option<String>,
     result_summary: Option<String>,
+    source_url: Option<String>,
+    pr_url: Option<String>,
 }
 
 #[derive(Clone)]
@@ -217,10 +219,15 @@ impl TaskMcpServer {
             task_id,
             agent,
             result_summary,
+            source_url,
+            pr_url,
         }): Parameters<UpdateTaskParams>,
     ) -> Result<CallToolResult, McpError> {
         let state = self.state();
-        tool_result(tasks::update_task_fields(&state, &task_id, agent, result_summary).await)
+        tool_result(
+            tasks::update_task_fields(&state, &task_id, agent, result_summary, source_url, pr_url)
+                .await,
+        )
     }
 }
 

@@ -1,0 +1,2 @@
+ALTER TABLE tasks ADD COLUMN source_url TEXT;
+ALTER TABLE tasks ADD COLUMN pr_url TEXT;

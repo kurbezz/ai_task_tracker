@@ -15,6 +15,8 @@ export function BoardPage() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [agent, setAgent] = useState("");
+  const [sourceUrl, setSourceUrl] = useState("");
+  const [prUrl, setPrUrl] = useState("");
   const [taskProjectId, setTaskProjectId] = useState("");
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
@@ -82,9 +84,11 @@ export function BoardPage() {
         title,
         ...(description.trim() && { description }),
         ...(agent.trim() && { agent }),
+        ...(sourceUrl.trim() && { source_url: sourceUrl }),
+        ...(prUrl.trim() && { pr_url: prUrl }),
       });
       setTasks((current) => [task, ...current]);
-      setTitle(""); setDescription(""); setAgent("");
+      setTitle(""); setDescription(""); setAgent(""); setSourceUrl(""); setPrUrl("");
       setShowTaskForm(false);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not create task");
@@ -130,6 +134,8 @@ export function BoardPage() {
           <label>Task title<input value={title} onChange={(event) => setTitle(event.target.value)} required placeholder="What should the agent take on?" autoFocus /></label>
           <label>Description <span className="optional">optional</span><input value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Short context or acceptance note" /></label>
           <label>Agent <span className="optional">optional</span><input value={agent} onChange={(event) => setAgent(event.target.value)} placeholder="e.g. planner" /></label>
+          <label>Source link <span className="optional">optional</span><input value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} placeholder="https://…" /></label>
+          <label>PR link <span className="optional">optional</span><input value={prUrl} onChange={(event) => setPrUrl(event.target.value)} placeholder="https://…" /></label>
           <button className="button button-primary" disabled={saving}>{saving ? "Adding…" : "Add task"}</button>
         </form>
       ) : (

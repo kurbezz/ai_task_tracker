@@ -55,6 +55,8 @@ pub struct Task {
     pub project_id: String,
     pub title: String,
     pub description: Option<String>,
+    pub source_url: Option<String>,
+    pub pr_url: Option<String>,
     pub status: String,
     pub agent: Option<String>,
     pub result_summary: Option<String>,
@@ -68,6 +70,8 @@ pub struct TaskResponse {
     pub project_id: String,
     pub title: String,
     pub description: Option<String>,
+    pub source_url: Option<String>,
+    pub pr_url: Option<String>,
     pub status: Status,
     pub agent: Option<String>,
     pub result_summary: Option<String>,
@@ -83,6 +87,8 @@ impl TaskResponse {
             project_id: task.project_id,
             title: task.title,
             description: task.description,
+            source_url: task.source_url,
+            pr_url: task.pr_url,
             status: task
                 .status
                 .parse()
@@ -102,6 +108,8 @@ pub struct CreateTask {
     pub title: String,
     pub description: Option<String>,
     pub agent: Option<String>,
+    pub source_url: Option<String>,
+    pub pr_url: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -113,6 +121,10 @@ pub struct UpdateTask {
     pub agent: PatchField<String>,
     #[serde(default)]
     pub result_summary: PatchField<String>,
+    #[serde(default)]
+    pub source_url: PatchField<String>,
+    #[serde(default)]
+    pub pr_url: PatchField<String>,
 }
 
 #[derive(Deserialize)]

@@ -40,6 +40,8 @@ pub(crate) async fn create_task_core(
         project_id: input.project_id,
         title: input.title,
         description: input.description,
+        source_url: input.source_url,
+        pr_url: input.pr_url,
         status: Status::ToDo.to_string(),
         agent: input.agent,
         result_summary: None,
@@ -47,13 +49,15 @@ pub(crate) async fn create_task_core(
         updated_at: now,
     };
     sqlx::query(
-        "INSERT INTO tasks (id, project_id, title, description, status, agent, result_summary, created_at, updated_at) \
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO tasks (id, project_id, title, description, source_url, pr_url, status, agent, result_summary, created_at, updated_at) \
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
     )
     .bind(&task.id)
     .bind(&task.project_id)
     .bind(&task.title)
     .bind(&task.description)
+    .bind(&task.source_url)
+    .bind(&task.pr_url)
     .bind(&task.status)
     .bind(&task.agent)
     .bind(&task.result_summary)
@@ -117,14 +121,18 @@ pub async fn update_task(
     let description = input.description.resolve(task.description);
     let agent = input.agent.resolve(task.agent);
     let result_summary = input.result_summary.resolve(task.result_summary);
+    let source_url = input.source_url.resolve(task.source_url);
+    let pr_url = input.pr_url.resolve(task.pr_url);
 
     sqlx::query(
-        "UPDATE tasks SET title = ?, description = ?, agent = ?, result_summary = ?, updated_at = ? WHERE id = ?",
+        "UPDATE tasks SET title = ?, description = ?, agent = ?, result_summary = ?, source_url = ?, pr_url = ?, updated_at = ? WHERE id = ?",
     )
     .bind(title)
     .bind(description)
     .bind(agent)
     .bind(result_summary)
+    .bind(source_url)
+    .bind(pr_url)
     .bind(Utc::now().to_rfc3339())
     .bind(&id)
     .execute(&state.pool)
@@ -143,14 +151,20 @@ pub(crate) async fn update_task_fields(
     task_id: &str,
     agent: Option<String>,
     result_summary: Option<String>,
+    source_url: Option<String>,
+    pr_url: Option<String>,
 ) -> Result<TaskResponse, AppError> {
     let task = fetch_task(state, task_id).await?;
     let agent = agent.or(task.agent);
     let result_summary = result_summary.or(task.result_summary);
+    let source_url = source_url.or(task.source_url);
+    let pr_url = pr_url.or(task.pr_url);
 
-    sqlx::query("UPDATE tasks SET agent = ?, result_summary = ?, updated_at = ? WHERE id = ?")
+    sqlx::query("UPDATE tasks SET agent = ?, result_summary = ?, source_url = ?, pr_url = ?, updated_at = ? WHERE id = ?")
         .bind(&agent)
         .bind(&result_summary)
+        .bind(&source_url)
+        .bind(&pr_url)
         .bind(Utc::now().to_rfc3339())
         .bind(task_id)
         .execute(&state.pool)
@@ -177,7 +191,7 @@ pub(crate) async fn list_project_tasks_core(
 ) -> Result<Vec<TaskResponse>, AppError> {
     ensure_project(state, project_id).await?;
     let tasks = sqlx::query_as::<_, Task>(
-        "SELECT id, project_id, title, description, status, agent, result_summary, created_at, updated_at \
+        "SELECT id, project_id, title, description, source_url, pr_url, status, agent, result_summary, created_at, updated_at \
          FROM tasks WHERE project_id = ? ORDER BY created_at",
     )
     .bind(project_id)
@@ -213,7 +227,7 @@ pub(crate) async fn transition_task_core(
 
     let result = async {
         let task = sqlx::query_as::<_, Task>(
-            "SELECT id, project_id, title, description, status, agent, result_summary, created_at, updated_at \
+            "SELECT id, project_id, title, description, source_url, pr_url, status, agent, result_summary, created_at, updated_at \
              FROM tasks WHERE id = ?",
         )
         .bind(id)
@@ -418,7 +432,7 @@ pub async fn list_attention(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<AttentionItem>>, AppError> {
     let rows = sqlx::query_as::<_, AttentionTask>(
-        "SELECT DISTINCT tasks.id, tasks.project_id, tasks.title, tasks.description, tasks.status, \
+        "SELECT DISTINCT tasks.id, tasks.project_id, tasks.title, tasks.description, tasks.source_url, tasks.pr_url, tasks.status, \
          tasks.agent, tasks.result_summary, tasks.created_at, tasks.updated_at, projects.name AS project_name \
          FROM tasks \
          INNER JOIN projects ON projects.id = tasks.project_id \
@@ -438,6 +452,8 @@ pub async fn list_attention(
             project_id: row.project_id,
             title: row.title,
             description: row.description,
+            source_url: row.source_url,
+            pr_url: row.pr_url,
             status: row.status,
             agent: row.agent,
             result_summary: row.result_summary,
@@ -454,7 +470,7 @@ pub async fn list_attention(
 
 pub(crate) async fn fetch_task(state: &AppState, id: &str) -> Result<Task, AppError> {
     sqlx::query_as::<_, Task>(
-        "SELECT id, project_id, title, description, status, agent, result_summary, created_at, updated_at \
+        "SELECT id, project_id, title, description, source_url, pr_url, status, agent, result_summary, created_at, updated_at \
          FROM tasks WHERE id = ?",
     )
     .bind(id)
@@ -533,6 +549,8 @@ struct AttentionTask {
     project_id: String,
     title: String,
     description: Option<String>,
+    source_url: Option<String>,
+    pr_url: Option<String>,
     status: String,
     agent: Option<String>,
     result_summary: Option<String>,

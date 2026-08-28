@@ -37,11 +37,13 @@ export const createTask = (task: {
   title: string;
   description?: string;
   agent?: string;
+  source_url?: string;
+  pr_url?: string;
 }) => request<Task>("/tasks", json("POST", task));
 export const getTask = (taskId: string) => request<Task>(`/tasks/${taskId}`);
 export const updateTask = (
   taskId: string,
-  changes: Partial<Pick<Task, "title" | "description" | "agent" | "result_summary">>,
+  changes: Partial<Pick<Task, "title" | "description" | "agent" | "result_summary" | "source_url" | "pr_url">>,
 ) => request<Task>(`/tasks/${taskId}`, json("PATCH", changes));
 export const deleteTask = (taskId: string) =>
   request<void>(`/tasks/${taskId}`, { method: "DELETE" });
