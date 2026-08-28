@@ -15,7 +15,8 @@ use crate::{
 
 #[derive(Deserialize)]
 pub struct ListTimeEntriesQuery {
-    pub date: String,
+    pub date: Option<String>,
+    pub task_id: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -41,6 +42,7 @@ pub struct TimeEntryResponse {
     pub id: String,
     pub task_id: String,
     pub task_title: String,
+    pub entry_date: String,
     pub minutes: i64,
 }
 
@@ -54,18 +56,30 @@ pub struct SyncStatus {
 #[derive(Serialize)]
 pub struct ListTimeEntriesResponse {
     pub entries: Vec<TimeEntryResponse>,
-    pub sync: SyncStatus,
+    pub sync: Option<SyncStatus>,
 }
 
 pub async fn list_time_entries(
     State(state): State<AppState>,
-    Query(ListTimeEntriesQuery { date }): Query<ListTimeEntriesQuery>,
+    Query(ListTimeEntriesQuery { date, task_id }): Query<ListTimeEntriesQuery>,
 ) -> Result<Json<ListTimeEntriesResponse>, AppError> {
+    if let Some(task_id) = task_id {
+        let entries = list_entries_for_task(&state, &task_id).await?;
+        return Ok(Json(ListTimeEntriesResponse {
+            entries,
+            sync: None,
+        }));
+    }
+    let date =
+        date.ok_or_else(|| AppError::Validation("either date or task_id is required".to_owned()))?;
     validate_entry_date(&date)?;
     let entries = list_entries_for_date(&state, &date).await?;
     let sync = fetch_sync_status(&state, &date).await?;
 
-    Ok(Json(ListTimeEntriesResponse { entries, sync }))
+    Ok(Json(ListTimeEntriesResponse {
+        entries,
+        sync: Some(sync),
+    }))
 }
 
 pub async fn create_time_entry(
@@ -192,7 +206,7 @@ async fn list_entries_for_date(
     entry_date: &str,
 ) -> Result<Vec<TimeEntryResponse>, AppError> {
     sqlx::query_as::<_, TimeEntryResponse>(
-        "SELECT time_entries.id, time_entries.task_id, tasks.title AS task_title, time_entries.minutes \
+        "SELECT time_entries.id, time_entries.task_id, tasks.title AS task_title, time_entries.entry_date, time_entries.minutes \
          FROM time_entries INNER JOIN tasks ON tasks.id = time_entries.task_id \
          WHERE time_entries.entry_date = ? ORDER BY time_entries.created_at, time_entries.id",
     )
@@ -202,9 +216,24 @@ async fn list_entries_for_date(
     .map_err(AppError::Internal)
 }
 
+async fn list_entries_for_task(
+    state: &AppState,
+    task_id: &str,
+) -> Result<Vec<TimeEntryResponse>, AppError> {
+    sqlx::query_as::<_, TimeEntryResponse>(
+        "SELECT time_entries.id, time_entries.task_id, tasks.title AS task_title, time_entries.entry_date, time_entries.minutes \
+         FROM time_entries INNER JOIN tasks ON tasks.id = time_entries.task_id \
+         WHERE time_entries.task_id = ? ORDER BY time_entries.entry_date DESC, time_entries.created_at DESC",
+    )
+    .bind(task_id)
+    .fetch_all(&state.pool)
+    .await
+    .map_err(AppError::Internal)
+}
+
 async fn fetch_entry(state: &AppState, id: &str) -> Result<TimeEntryResponse, AppError> {
     sqlx::query_as::<_, TimeEntryResponse>(
-        "SELECT time_entries.id, time_entries.task_id, tasks.title AS task_title, time_entries.minutes \
+        "SELECT time_entries.id, time_entries.task_id, tasks.title AS task_title, time_entries.entry_date, time_entries.minutes \
          FROM time_entries INNER JOIN tasks ON tasks.id = time_entries.task_id \
          WHERE time_entries.id = ?",
     )

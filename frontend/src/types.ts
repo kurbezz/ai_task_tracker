@@ -66,6 +66,7 @@ export interface TimeEntry {
   task_id: string;
   task_title: string;
   minutes: number;
+  entry_date: string;
 }
 
 export interface TimeSyncStatus {

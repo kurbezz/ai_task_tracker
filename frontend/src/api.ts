@@ -60,6 +60,8 @@ export const listAttention = () => request<AttentionItem[]>("/tasks/needs-attent
 
 export const listTimeEntries = (date: string) =>
   request<{ entries: TimeEntry[]; sync: TimeSyncStatus }>(`/time-entries?date=${date}`);
+export const listTaskTimeEntries = (taskId: string) =>
+  request<{ entries: TimeEntry[] }>(`/time-entries?task_id=${taskId}`);
 export const createTimeEntry = (entry: { task_id: string; entry_date: string; minutes: number }) =>
   request<TimeEntry>("/time-entries", json("POST", entry));
 export const updateTimeEntry = (entryId: string, changes: Partial<Pick<TimeEntry, "minutes" | "task_id">>) =>

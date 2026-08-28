@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from "react";
-import { addLog, addTag, deleteTask, getTask, listLogs, removeTag, transitionTask, updateTask } from "../api";
-import { STATUS_LABELS, STATUS_ORDER, type Status, type Task, type TaskLog } from "../types";
+import { addLog, addTag, createTimeEntry, deleteTask, deleteTimeEntry, getTask, listLogs, listTaskTimeEntries, removeTag, transitionTask, updateTask, updateTimeEntry } from "../api";
+import { formatHours, todayLocal } from "../timeFormat";
+import { STATUS_LABELS, STATUS_ORDER, type Status, type Task, type TaskLog, type TimeEntry } from "../types";
 import { useTaskEvents, useTaskEventsReconnect } from "../taskEvents";
 import { TagBadge } from "./TagBadge";
 
@@ -18,6 +19,7 @@ function formatDate(value: string) {
 export function TaskDetail({ taskId, onClose, onTaskChange }: TaskDetailProps) {
   const [task, setTask] = useState<Task | null>(null);
   const [logs, setLogs] = useState<TaskLog[]>([]);
+  const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [agent, setAgent] = useState("");
@@ -27,13 +29,19 @@ export function TaskDetail({ taskId, onClose, onTaskChange }: TaskDetailProps) {
   const [logAuthor, setLogAuthor] = useState("");
   const [logMessage, setLogMessage] = useState("");
   const [tagName, setTagName] = useState("");
+  const [timeHours, setTimeHours] = useState("");
   const [busy, setBusy] = useState("");
+  const [timeSaving, setTimeSaving] = useState(false);
+  const [editingTimeEntryId, setEditingTimeEntryId] = useState<string | null>(null);
+  const [editTimeHours, setEditTimeHours] = useState("");
+  const [timeEntryBusy, setTimeEntryBusy] = useState("");
   const [copied, setCopied] = useState(false);
 
   async function refresh() {
-    const [nextTask, nextLogs] = await Promise.all([getTask(taskId), listLogs(taskId)]);
+    const [nextTask, nextLogs, nextTimeEntries] = await Promise.all([getTask(taskId), listLogs(taskId), listTaskTimeEntries(taskId)]);
     setTask(nextTask);
     setLogs(nextLogs);
+    setTimeEntries(nextTimeEntries.entries);
     setAgent(nextTask.agent ?? "");
     setResult(nextTask.result_summary ?? "");
     setSourceUrl(nextTask.source_url ?? "");
@@ -106,6 +114,65 @@ export function TaskDetail({ taskId, onClose, onTaskChange }: TaskDetailProps) {
     mutate("add-tag", () => addTag(taskId, tagName));
   }
 
+  async function submitTimeEntry(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const parsedHours = Number(timeHours);
+    if (!Number.isFinite(parsedHours) || parsedHours <= 0) {
+      setError("Enter hours greater than 0");
+      return;
+    }
+    setError("");
+    setTimeSaving(true);
+    try {
+      const entry = await createTimeEntry({ task_id: taskId, entry_date: todayLocal(), minutes: Math.round(parsedHours * 60) });
+      setTimeEntries((current) => [entry, ...current]);
+      setTimeHours("");
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not add time entry");
+    } finally {
+      setTimeSaving(false);
+    }
+  }
+
+  function startTimeEntryEdit(entry: TimeEntry) {
+    setError("");
+    setEditingTimeEntryId(entry.id);
+    setEditTimeHours(formatHours(entry.minutes));
+  }
+
+  async function saveTimeEntryEdit(entry: TimeEntry) {
+    const parsedHours = Number(editTimeHours);
+    if (!Number.isFinite(parsedHours) || parsedHours <= 0) {
+      setError("Enter hours greater than 0");
+      return;
+    }
+    setError("");
+    setTimeEntryBusy(entry.id);
+    try {
+      const updated = await updateTimeEntry(entry.id, { minutes: Math.round(parsedHours * 60) });
+      setTimeEntries((current) => current.map((item) => (item.id === entry.id ? updated : item)));
+      setEditingTimeEntryId(null);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not update entry");
+    } finally {
+      setTimeEntryBusy("");
+    }
+  }
+
+  async function removeTimeEntry(entry: TimeEntry) {
+    if (!window.confirm(`Delete the ${formatHours(entry.minutes)}h entry for "${entry.task_title}"?`)) return;
+    setError("");
+    setTimeEntryBusy(entry.id);
+    try {
+      await deleteTimeEntry(entry.id);
+      setTimeEntries((current) => current.filter((item) => item.id !== entry.id));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Could not delete entry");
+    } finally {
+      setTimeEntryBusy("");
+    }
+  }
+
   function removeTask() {
     if (!window.confirm("Delete this task? This cannot be undone.")) return;
     mutate("delete", () => deleteTask(taskId), true, async () => {
@@ -170,6 +237,24 @@ export function TaskDetail({ taskId, onClose, onTaskChange }: TaskDetailProps) {
           <section className="detail-section"><h3>Tags</h3>
             <div className="tag-manager">{task.tags.length ? task.tags.map((tag) => <span className="tag-with-remove" key={tag.id}><TagBadge tag={tag} /><button type="button" aria-label={`Remove ${tag.name}`} disabled={busy !== ""} onClick={() => mutate("remove-tag", () => removeTag(taskId, tag.id), true)}>×</button></span>) : <p className="muted">No tags yet.</p>}</div>
             <form className="inline-form" onSubmit={submitTag}><input value={tagName} onChange={(event) => setTagName(event.target.value)} required placeholder="Add a tag" /><button className="button button-secondary" disabled={busy !== ""}>{busy === "add-tag" ? "Adding…" : "Add"}</button></form>
+          </section>
+
+          <section className="detail-section"><h3>Time logged</h3>
+            <form className="time-entry-edit" onSubmit={submitTimeEntry}>
+              <input type="number" step="0.25" min="0.25" placeholder="1.5" value={timeHours} onChange={(event) => setTimeHours(event.target.value)} required />
+              <button className="button button-small button-secondary" disabled={timeSaving}>{timeSaving ? "Adding…" : "Add"}</button>
+            </form>
+            {timeEntries.length === 0 ? <p className="muted">No time logged yet for this task.</p> : <div className="time-entry-list">
+              {timeEntries.map((entry) => <div className="time-entry-row" key={entry.id}>
+                <span className="time-entry-task">{entry.entry_date}</span>
+                {editingTimeEntryId === entry.id ? <form className="time-entry-edit" onSubmit={(event) => { event.preventDefault(); void saveTimeEntryEdit(entry); }}>
+                  <input type="number" step="0.25" min="0.25" autoFocus value={editTimeHours} onChange={(event) => setEditTimeHours(event.target.value)} />
+                  <button className="button button-small button-secondary" disabled={timeEntryBusy === entry.id}>{timeEntryBusy === entry.id ? "Saving…" : "Save"}</button>
+                  <button className="button button-small button-ghost" type="button" onClick={() => setEditingTimeEntryId(null)}>Cancel</button>
+                </form> : <button className="time-entry-hours" type="button" onClick={() => startTimeEntryEdit(entry)}>{formatHours(entry.minutes)}h</button>}
+                <button className="icon-button time-entry-delete" type="button" aria-label={`Delete entry for ${entry.task_title}`} disabled={timeEntryBusy === entry.id} onClick={() => void removeTimeEntry(entry)}>×</button>
+              </div>)}
+            </div>}
           </section>
 
           <section className="detail-section"><h3>Timeline</h3>

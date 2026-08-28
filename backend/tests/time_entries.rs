@@ -37,6 +37,15 @@ async fn create_task(app: &Router, project_id: &str, title: &str) -> Value {
 }
 
 async fn create_time_entry(app: &Router, task_id: &str, minutes: i64) -> Value {
+    create_time_entry_on_date(app, task_id, "2026-08-28", minutes).await
+}
+
+async fn create_time_entry_on_date(
+    app: &Router,
+    task_id: &str,
+    entry_date: &str,
+    minutes: i64,
+) -> Value {
     let response = app
         .clone()
         .oneshot(support::api_request(
@@ -44,7 +53,7 @@ async fn create_time_entry(app: &Router, task_id: &str, minutes: i64) -> Value {
             "/api/time-entries",
             Some(json!({
                 "task_id": task_id,
-                "entry_date": "2026-08-28",
+                "entry_date": entry_date,
                 "minutes": minutes
             })),
         ))
@@ -63,6 +72,7 @@ async fn time_entries_support_create_list_update_and_delete() {
 
     let entry = create_time_entry(&app, first_task["id"].as_str().unwrap(), 90).await;
     assert_eq!(entry["task_title"], "First task");
+    assert_eq!(entry["entry_date"], "2026-08-28");
     assert_eq!(entry["minutes"], 90);
     let entry_id = entry["id"].as_str().unwrap();
 
@@ -120,6 +130,42 @@ async fn time_entries_support_create_list_update_and_delete() {
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
     assert_eq!(support::json_body(response).await["entries"], json!([]));
+}
+
+#[tokio::test]
+async fn task_time_entries_include_all_dates_without_sync_status() {
+    let app = ai_task_tracker::build_router(support::state().await);
+    let project = create_project(&app).await;
+    let task = create_task(&app, project["id"].as_str().unwrap(), "Tracked task").await;
+    let other_task = create_task(&app, project["id"].as_str().unwrap(), "Other task").await;
+
+    let older =
+        create_time_entry_on_date(&app, task["id"].as_str().unwrap(), "2026-08-27", 30).await;
+    let newer =
+        create_time_entry_on_date(&app, task["id"].as_str().unwrap(), "2026-08-28", 60).await;
+    create_time_entry_on_date(&app, other_task["id"].as_str().unwrap(), "2026-08-29", 45).await;
+
+    let response = app
+        .oneshot(support::api_request(
+            Method::GET,
+            &format!("/api/time-entries?task_id={}", task["id"].as_str().unwrap()),
+            None,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let listed = support::json_body(response).await;
+    assert_eq!(listed["sync"], json!(null));
+    assert_eq!(listed["entries"].as_array().unwrap().len(), 2);
+    assert!(listed["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|entry| entry["task_id"] == task["id"]));
+    assert_eq!(listed["entries"][0]["id"], newer["id"]);
+    assert_eq!(listed["entries"][0]["entry_date"], "2026-08-28");
+    assert_eq!(listed["entries"][1]["id"], older["id"]);
+    assert_eq!(listed["entries"][1]["entry_date"], "2026-08-27");
 }
 
 #[tokio::test]
