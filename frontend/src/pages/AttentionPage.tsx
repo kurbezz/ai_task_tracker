@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { listAttention } from "../api";
 import { TagBadge } from "../components/TagBadge";
 import { STATUS_LABELS, type AttentionItem } from "../types";
+import { useTaskEvents, useTaskEventsReconnect } from "../taskEvents";
 
 const attentionTags = new Set(["NEEDS_USER_INPUT", "BLOCKED", "FAILED"]);
 
@@ -11,9 +12,16 @@ export function AttentionPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  const loadAttention = useCallback(() => {
     listAttention().then(setItems).catch((reason: Error) => setError(reason.message)).finally(() => setLoading(false));
   }, []);
+
+  useEffect(() => {
+    loadAttention();
+  }, [loadAttention]);
+
+  useTaskEvents(() => { loadAttention(); });
+  useTaskEventsReconnect(loadAttention);
 
   return <section className="page attention-page">
     <div className="page-intro attention-intro"><div><p className="eyebrow">Daily triage</p><h1>Attention<br /><em>needed.</em></h1><p className="lede">Tasks that need a decision, are blocked, or had an unsuccessful run.</p></div><div className="attention-signal"><span>!</span><strong>{items.length}</strong><small>open signals</small></div></div>

@@ -21,7 +21,10 @@ pub async fn state() -> AppState {
         .execute(&pool)
         .await
         .unwrap();
-    AppState { pool }
+    AppState {
+        pool,
+        events: tokio::sync::broadcast::channel(256).0,
+    }
 }
 
 #[allow(dead_code)]
@@ -39,7 +42,13 @@ pub async fn file_state() -> (AppState, PathBuf) {
         .execute(&pool)
         .await
         .unwrap();
-    (AppState { pool }, path)
+    (
+        AppState {
+            pool,
+            events: tokio::sync::broadcast::channel(256).0,
+        },
+        path,
+    )
 }
 
 #[allow(dead_code)]

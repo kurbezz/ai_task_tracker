@@ -4,6 +4,7 @@ import { clearApiKey, getApiKey, saveApiKey } from "./apiKey";
 import { AttentionPage } from "./pages/AttentionPage";
 import { BoardPage } from "./pages/BoardPage";
 import { ProjectsPage } from "./pages/ProjectsPage";
+import { TaskEventsProvider } from "./taskEvents";
 
 export default function App() {
   const [apiKey, setApiKey] = useState(() => getApiKey());
@@ -42,11 +43,11 @@ export default function App() {
         {apiKey && <button className="access-key-button" type="button" onClick={() => setShowAccessKey(true)}>Access key</button>}
       </header>
       <main>
-        {apiKey ? <Routes>
+        {apiKey ? <TaskEventsProvider apiKey={apiKey}><Routes>
           <Route path="/" element={<BoardPage />} />
           <Route path="/projects" element={<ProjectsPage />} />
           <Route path="/attention" element={<AttentionPage />} />
-        </Routes> : <ApiKeyOnboarding onSave={handleKeySaved} />}
+        </Routes></TaskEventsProvider> : <ApiKeyOnboarding onSave={handleKeySaved} />}
       </main>
       {showAccessKey && <ApiKeyDialog onClose={() => setShowAccessKey(false)} onSave={handleKeySaved} onClear={handleKeyCleared} />}
     </div>

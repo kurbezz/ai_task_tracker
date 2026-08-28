@@ -13,14 +13,17 @@ use std::time::Duration;
 pub mod auth;
 pub mod db;
 pub mod error;
+pub mod events;
 pub mod handlers;
 pub mod mcp;
 pub mod models;
 pub mod static_files;
+pub mod ws;
 
 #[derive(Clone)]
 pub struct AppState {
     pub pool: sqlx::SqlitePool,
+    pub events: tokio::sync::broadcast::Sender<events::TaskEvent>,
 }
 
 const DEFAULT_MCP_SESSION_KEEP_ALIVE_SECS: u64 = 1800;
@@ -89,11 +92,17 @@ fn build_router_with_mcp_session_config(state: AppState, session_config: Session
         ));
 
     let mcp_pool = state.pool.clone();
+    let mcp_events = state.events.clone();
     let mcp: Router<AppState> = Router::new()
         .nest_service(
             "/mcp",
             StreamableHttpService::new(
-                move || Ok(mcp::TaskMcpServer::new(mcp_pool.clone())),
+                move || {
+                    Ok(mcp::TaskMcpServer::new(
+                        mcp_pool.clone(),
+                        mcp_events.clone(),
+                    ))
+                },
                 LocalSessionManager {
                     session_config,
                     ..Default::default()
@@ -109,6 +118,7 @@ fn build_router_with_mcp_session_config(state: AppState, session_config: Session
 
     Router::new()
         .route("/health", get(|| async { "ok" }))
+        .route("/ws", get(ws::ws_handler))
         .nest("/api", api)
         .merge(mcp)
         .fallback(static_files::serve)
@@ -148,7 +158,10 @@ mod tests {
             .execute(&pool)
             .await
             .unwrap();
-        AppState { pool }
+        AppState {
+            pool,
+            events: tokio::sync::broadcast::channel(256).0,
+        }
     }
 
     #[test]

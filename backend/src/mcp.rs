@@ -7,6 +7,7 @@ use sqlx::SqlitePool;
 
 use crate::{
     error::AppError,
+    events::TaskEvent,
     handlers::{projects, tasks},
     models::{CreateLog, CreateTask, Status},
     AppState,
@@ -80,13 +81,15 @@ struct UpdateTaskParams {
 #[derive(Clone)]
 pub struct TaskMcpServer {
     pool: SqlitePool,
+    events: tokio::sync::broadcast::Sender<TaskEvent>,
     tool_router: ToolRouter<TaskMcpServer>,
 }
 
 impl TaskMcpServer {
-    pub fn new(pool: SqlitePool) -> Self {
+    pub fn new(pool: SqlitePool, events: tokio::sync::broadcast::Sender<TaskEvent>) -> Self {
         Self {
             pool,
+            events,
             tool_router: Self::tool_router(),
         }
     }
@@ -94,6 +97,7 @@ impl TaskMcpServer {
     fn state(&self) -> AppState {
         AppState {
             pool: self.pool.clone(),
+            events: self.events.clone(),
         }
     }
 }

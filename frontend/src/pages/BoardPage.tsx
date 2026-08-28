@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { createTask, listProjectTasks, listProjects } from "../api";
 import { TaskCard } from "../components/TaskCard";
 import { TaskDetail } from "../components/TaskDetail";
+import { useTaskEvents, useTaskEventsReconnect } from "../taskEvents";
 import { STATUS_LABELS, STATUS_ORDER, type Project, type Task } from "../types";
 
 export function BoardPage() {
@@ -38,6 +39,20 @@ export function BoardPage() {
   }, []);
 
   useEffect(() => { setLoading(true); void loadBoard(); }, [loadBoard]);
+
+  useTaskEvents((event) => {
+    if (event.type === "task_created" || event.type === "task_updated") {
+      setTasks((current) => {
+        const index = current.findIndex((task) => task.id === event.task.id);
+        if (index === -1) return [event.task, ...current];
+        return current.map((task) => task.id === event.task.id ? event.task : task);
+      });
+    } else if (event.type === "task_deleted") {
+      setTasks((current) => current.filter((task) => task.id !== event.task_id));
+    }
+  });
+
+  useTaskEventsReconnect(() => { void loadBoard(); });
 
   useEffect(() => {
     if (!taskProjectId && projects.length > 0) {

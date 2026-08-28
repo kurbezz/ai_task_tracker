@@ -9,6 +9,7 @@ use uuid::Uuid;
 
 use crate::{
     error::AppError,
+    events::TaskEvent,
     models::{
         AttachTag, AttentionItem, CreateLog, CreateTask, Status, Tag, Task, TaskLog, TaskResponse,
         TransitionRequest, UpdateTask,
@@ -62,7 +63,11 @@ pub(crate) async fn create_task_core(
     .await
     .map_err(AppError::Internal)?;
 
-    task_response(state, task).await
+    let response = task_response(state, task).await?;
+    let _ = state.events.send(TaskEvent::TaskCreated {
+        task: response.clone(),
+    });
+    Ok(response)
 }
 
 pub async fn get_task(
@@ -83,6 +88,7 @@ pub async fn delete_task(
 }
 
 pub(crate) async fn delete_task_core(state: &AppState, id: &str) -> Result<(), AppError> {
+    let task = fetch_task(state, id).await?;
     let result = sqlx::query("DELETE FROM tasks WHERE id = ?")
         .bind(id)
         .execute(&state.pool)
@@ -93,6 +99,10 @@ pub(crate) async fn delete_task_core(state: &AppState, id: &str) -> Result<(), A
         return Err(AppError::NotFound);
     }
 
+    let _ = state.events.send(TaskEvent::TaskDeleted {
+        task_id: id.to_owned(),
+        project_id: task.project_id,
+    });
     Ok(())
 }
 
@@ -121,9 +131,11 @@ pub async fn update_task(
     .await
     .map_err(AppError::Internal)?;
 
-    Ok(Json(
-        task_response(&state, fetch_task(&state, &id).await?).await?,
-    ))
+    let response = task_response(&state, fetch_task(&state, &id).await?).await?;
+    let _ = state.events.send(TaskEvent::TaskUpdated {
+        task: response.clone(),
+    });
+    Ok(Json(response))
 }
 
 pub(crate) async fn update_task_fields(
@@ -145,7 +157,11 @@ pub(crate) async fn update_task_fields(
         .await
         .map_err(AppError::Internal)?;
 
-    task_response(state, fetch_task(state, task_id).await?).await
+    let response = task_response(state, fetch_task(state, task_id).await?).await?;
+    let _ = state.events.send(TaskEvent::TaskUpdated {
+        task: response.clone(),
+    });
+    Ok(response)
 }
 
 pub async fn list_project_tasks(
@@ -260,7 +276,11 @@ pub(crate) async fn transition_task_core(
     }
     drop(connection);
 
-    task_response(state, fetch_task(state, id).await?).await
+    let response = task_response(state, fetch_task(state, id).await?).await?;
+    let _ = state.events.send(TaskEvent::TaskUpdated {
+        task: response.clone(),
+    });
+    Ok(response)
 }
 
 pub async fn list_logs(
@@ -317,6 +337,10 @@ pub(crate) async fn create_log_core(
     .await
     .map_err(AppError::Internal)?;
 
+    let _ = state.events.send(TaskEvent::LogAdded {
+        task_id: task_id.to_owned(),
+        log: log.clone(),
+    });
     Ok(log)
 }
 
@@ -358,7 +382,11 @@ pub(crate) async fn attach_tag_core(
     .await
     .map_err(AppError::Internal)?;
 
-    task_response(state, fetch_task(state, task_id).await?).await
+    let response = task_response(state, fetch_task(state, task_id).await?).await?;
+    let _ = state.events.send(TaskEvent::TaskUpdated {
+        task: response.clone(),
+    });
+    Ok(response)
 }
 
 pub async fn remove_tag(
@@ -381,6 +409,8 @@ pub(crate) async fn remove_tag_core(
         .execute(&state.pool)
         .await
         .map_err(AppError::Internal)?;
+    let response = task_response(state, fetch_task(state, task_id).await?).await?;
+    let _ = state.events.send(TaskEvent::TaskUpdated { task: response });
     Ok(())
 }
 

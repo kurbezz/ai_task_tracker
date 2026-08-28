@@ -1,6 +1,7 @@
 import { FormEvent, useEffect, useState } from "react";
 import { addLog, addTag, deleteTask, getTask, listLogs, removeTag, transitionTask, updateTask } from "../api";
 import { STATUS_LABELS, STATUS_ORDER, type Status, type Task, type TaskLog } from "../types";
+import { useTaskEvents, useTaskEventsReconnect } from "../taskEvents";
 import { TagBadge } from "./TagBadge";
 
 interface TaskDetailProps {
@@ -42,6 +43,22 @@ export function TaskDetail({ taskId, onClose, onTaskChange }: TaskDetailProps) {
   // Refreshes whenever a different card is opened.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskId]);
+
+  useTaskEvents((event) => {
+    if (event.type === "task_updated" && event.task.id === taskId) {
+      setTask((current) => current ? { ...current, ...event.task } : event.task);
+      setAgent(event.task.agent ?? "");
+      setResult(event.task.result_summary ?? "");
+    } else if (event.type === "log_added" && event.task_id === taskId) {
+      setLogs((current) => [...current, event.log]);
+    } else if (event.type === "task_deleted" && event.task_id === taskId) {
+      onClose();
+    }
+  });
+
+  useTaskEventsReconnect(() => {
+    void refresh().catch((reason) => setError(reason instanceof Error ? reason.message : "Could not load task"));
+  });
 
   async function mutate(action: string, operation: () => Promise<unknown>, keepInput = false, afterSuccess?: () => Promise<void> | void) {
     setError("");
