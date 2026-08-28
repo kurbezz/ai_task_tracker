@@ -24,6 +24,7 @@ pub async fn state() -> AppState {
     AppState {
         pool,
         events: tokio::sync::broadcast::channel(256).0,
+        clockify: None,
     }
 }
 
@@ -46,6 +47,7 @@ pub async fn file_state() -> (AppState, PathBuf) {
         AppState {
             pool,
             events: tokio::sync::broadcast::channel(256).0,
+            clockify: None,
         },
         path,
     )

@@ -1,4 +1,4 @@
-import type { AttentionItem, Project, Status, Tag, Task, TaskLog } from "./types";
+import type { AttentionItem, Project, Status, Tag, Task, TaskLog, TimeEntry, TimeSyncStatus } from "./types";
 import { getApiKey } from "./apiKey";
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -57,3 +57,14 @@ export const addTag = (taskId: string, name: string) =>
 export const removeTag = (taskId: string, tagId: string) =>
   request<void>(`/tasks/${taskId}/tags/${tagId}`, { method: "DELETE" });
 export const listAttention = () => request<AttentionItem[]>("/tasks/needs-attention");
+
+export const listTimeEntries = (date: string) =>
+  request<{ entries: TimeEntry[]; sync: TimeSyncStatus }>(`/time-entries?date=${date}`);
+export const createTimeEntry = (entry: { task_id: string; entry_date: string; minutes: number }) =>
+  request<TimeEntry>("/time-entries", json("POST", entry));
+export const updateTimeEntry = (entryId: string, changes: Partial<Pick<TimeEntry, "minutes" | "task_id">>) =>
+  request<TimeEntry>(`/time-entries/${entryId}`, json("PATCH", changes));
+export const deleteTimeEntry = (entryId: string) =>
+  request<void>(`/time-entries/${entryId}`, { method: "DELETE" });
+export const syncTimeEntries = (entryDate: string) =>
+  request<TimeSyncStatus>("/time-entries/sync", json("POST", { entry_date: entryDate }));

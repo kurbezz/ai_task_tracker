@@ -6,6 +6,7 @@ use rmcp::{
 use sqlx::SqlitePool;
 
 use crate::{
+    clockify::ClockifyConfig,
     error::AppError,
     events::TaskEvent,
     handlers::{projects, tasks},
@@ -84,14 +85,20 @@ struct UpdateTaskParams {
 pub struct TaskMcpServer {
     pool: SqlitePool,
     events: tokio::sync::broadcast::Sender<TaskEvent>,
+    clockify: Option<ClockifyConfig>,
     tool_router: ToolRouter<TaskMcpServer>,
 }
 
 impl TaskMcpServer {
-    pub fn new(pool: SqlitePool, events: tokio::sync::broadcast::Sender<TaskEvent>) -> Self {
+    pub fn new(
+        pool: SqlitePool,
+        events: tokio::sync::broadcast::Sender<TaskEvent>,
+        clockify: Option<ClockifyConfig>,
+    ) -> Self {
         Self {
             pool,
             events,
+            clockify,
             tool_router: Self::tool_router(),
         }
     }
@@ -100,6 +107,7 @@ impl TaskMcpServer {
         AppState {
             pool: self.pool.clone(),
             events: self.events.clone(),
+            clockify: self.clockify.clone(),
         }
     }
 }

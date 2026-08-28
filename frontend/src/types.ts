@@ -60,3 +60,15 @@ export interface TaskLog {
 export interface AttentionItem extends Task {
   project_name: string;
 }
+
+export interface TimeEntry {
+  id: string;
+  task_id: string;
+  task_title: string;
+  minutes: number;
+}
+
+export interface TimeSyncStatus {
+  synced_at: string | null;
+  is_synced: boolean;
+}

@@ -11,6 +11,7 @@ use rmcp::transport::streamable_http_server::{
 use std::time::Duration;
 
 pub mod auth;
+pub mod clockify;
 pub mod db;
 pub mod error;
 pub mod events;
@@ -24,6 +25,7 @@ pub mod ws;
 pub struct AppState {
     pub pool: sqlx::SqlitePool,
     pub events: tokio::sync::broadcast::Sender<events::TaskEvent>,
+    pub clockify: Option<clockify::ClockifyConfig>,
 }
 
 const DEFAULT_MCP_SESSION_KEEP_ALIVE_SECS: u64 = 1800;
@@ -84,6 +86,20 @@ fn build_router_with_mcp_session_config(state: AppState, session_config: Session
             "/tasks/needs-attention",
             get(handlers::tasks::list_attention),
         )
+        .route(
+            "/time-entries",
+            get(handlers::time_entries::list_time_entries)
+                .post(handlers::time_entries::create_time_entry),
+        )
+        .route(
+            "/time-entries/sync",
+            post(handlers::time_entries::sync_time_entries),
+        )
+        .route(
+            "/time-entries/:id",
+            delete(handlers::time_entries::delete_time_entry)
+                .patch(handlers::time_entries::update_time_entry),
+        )
         .fallback(|| async { StatusCode::NOT_FOUND })
         .layer(middleware::from_fn(error::normalize_api_errors))
         .layer(middleware::from_fn_with_state(
@@ -93,6 +109,7 @@ fn build_router_with_mcp_session_config(state: AppState, session_config: Session
 
     let mcp_pool = state.pool.clone();
     let mcp_events = state.events.clone();
+    let mcp_clockify = state.clockify.clone();
     let mcp: Router<AppState> = Router::new()
         .nest_service(
             "/mcp",
@@ -101,6 +118,7 @@ fn build_router_with_mcp_session_config(state: AppState, session_config: Session
                     Ok(mcp::TaskMcpServer::new(
                         mcp_pool.clone(),
                         mcp_events.clone(),
+                        mcp_clockify.clone(),
                     ))
                 },
                 LocalSessionManager {
@@ -161,6 +179,7 @@ mod tests {
         AppState {
             pool,
             events: tokio::sync::broadcast::channel(256).0,
+            clockify: None,
         }
     }
 

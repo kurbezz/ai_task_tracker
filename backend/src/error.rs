@@ -23,6 +23,7 @@ pub enum AppError {
     UnsupportedMediaType,
     Validation(String),
     InvalidTransition(String),
+    External { status: StatusCode, message: String },
     Internal(sqlx::Error),
 }
 
@@ -72,6 +73,9 @@ impl IntoResponse for AppError {
                 message,
                 "INVALID_TRANSITION".to_owned(),
             ),
+            Self::External { status, message } => {
+                (status, message, "EXTERNAL_SERVICE_ERROR".to_owned())
+            }
             Self::Internal(error) => {
                 eprintln!("internal database error: {error}");
                 (

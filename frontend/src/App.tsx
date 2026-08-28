@@ -4,6 +4,7 @@ import { clearApiKey, getApiKey, saveApiKey } from "./apiKey";
 import { AttentionPage } from "./pages/AttentionPage";
 import { BoardPage } from "./pages/BoardPage";
 import { ProjectsPage } from "./pages/ProjectsPage";
+import { TimeTrackingPage } from "./pages/TimeTrackingPage";
 import { TaskEventsProvider } from "./taskEvents";
 
 export default function App() {
@@ -38,6 +39,7 @@ export default function App() {
           <NavLink end to="/">Board</NavLink>
           <NavLink to="/projects">Projects</NavLink>
           <NavLink to="/attention">Attention queue</NavLink>
+          <NavLink to="/time">Time tracking</NavLink>
         </nav>}
         <span className="topbar-note">AI work, in motion</span>
         {apiKey && <button className="access-key-button" type="button" onClick={() => setShowAccessKey(true)}>Access key</button>}
@@ -47,6 +49,7 @@ export default function App() {
           <Route path="/" element={<BoardPage />} />
           <Route path="/projects" element={<ProjectsPage />} />
           <Route path="/attention" element={<AttentionPage />} />
+          <Route path="/time" element={<TimeTrackingPage />} />
         </Routes></TaskEventsProvider> : <ApiKeyOnboarding onSave={handleKeySaved} />}
       </main>
       {showAccessKey && <ApiKeyDialog onClose={() => setShowAccessKey(false)} onSave={handleKeySaved} onClear={handleKeyCleared} />}

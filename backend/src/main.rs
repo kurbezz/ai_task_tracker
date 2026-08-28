@@ -1,5 +1,6 @@
 use ai_task_tracker::{
     build_router,
+    clockify::ClockifyConfig,
     db::{connect, ensure_initial_api_key, migrate},
     AppState,
 };
@@ -18,6 +19,7 @@ async fn main() {
         build_router(AppState {
             pool,
             events: tokio::sync::broadcast::channel(256).0,
+            clockify: ClockifyConfig::from_env(),
         }),
     )
     .await
