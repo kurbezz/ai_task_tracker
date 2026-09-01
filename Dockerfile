@@ -23,7 +23,10 @@ RUN cargo build --release --manifest-path backend/Cargo.toml
 
 FROM debian:bookworm-slim
 
-RUN groupadd --system app \
+RUN apt-get update \
+    && apt-get install --yes --no-install-recommends wget \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --system app \
     && useradd --system --gid app --create-home app
 
 WORKDIR /app

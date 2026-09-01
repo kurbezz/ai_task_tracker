@@ -1,7 +1,7 @@
 mod support;
 
 use rmcp::{
-    model::{CallToolRequestParam, ClientInfo},
+    model::{CallToolRequestParams, ClientInfo},
     transport::{
         streamable_http_client::StreamableHttpClientTransportConfig, StreamableHttpClientTransport,
     },
@@ -13,12 +13,9 @@ async fn ping_tool_round_trips_over_authenticated_mcp_session() {
     let (base_url, server) = support::spawn_http_server(support::state().await).await;
 
     let headers = support::api_key_header().into_iter().collect();
-    let transport = StreamableHttpClientTransport::with_client(
-        reqwest::Client::builder()
-            .default_headers(headers)
-            .build()
-            .expect("test client should build"),
-        StreamableHttpClientTransportConfig::with_uri(format!("{base_url}/mcp")),
+    let transport = StreamableHttpClientTransport::from_config(
+        StreamableHttpClientTransportConfig::with_uri(format!("{base_url}/mcp"))
+            .custom_headers(headers),
     );
     let client = ClientInfo::default()
         .serve(transport)
@@ -32,10 +29,10 @@ async fn ping_tool_round_trips_over_authenticated_mcp_session() {
     assert!(tools.tools.iter().any(|tool| tool.name == "ping"));
 
     let result = client
-        .call_tool(CallToolRequestParam {
-            name: "ping".into(),
-            arguments: Some(serde_json::json!({}).as_object().cloned().unwrap()),
-        })
+        .call_tool(
+            CallToolRequestParams::new("ping")
+                .with_arguments(serde_json::json!({}).as_object().cloned().unwrap()),
+        )
         .await
         .expect("ping call should succeed");
     assert_ne!(result.is_error, Some(true));
@@ -95,12 +92,9 @@ async fn create_task_and_get_task_tools_round_trip() {
     let project_id = create_project(&base_url).await;
 
     let headers = support::api_key_header().into_iter().collect();
-    let transport = StreamableHttpClientTransport::with_client(
-        reqwest::Client::builder()
-            .default_headers(headers)
-            .build()
-            .expect("test client should build"),
-        StreamableHttpClientTransportConfig::with_uri(format!("{base_url}/mcp")),
+    let transport = StreamableHttpClientTransport::from_config(
+        StreamableHttpClientTransportConfig::with_uri(format!("{base_url}/mcp"))
+            .custom_headers(headers),
     );
     let client = ClientInfo::default()
         .serve(transport)
@@ -115,10 +109,7 @@ async fn create_task_and_get_task_tools_round_trip() {
     .cloned()
     .expect("create args should be an object");
     let created = client
-        .call_tool(CallToolRequestParam {
-            name: "create_task".into(),
-            arguments: Some(create_args),
-        })
+        .call_tool(CallToolRequestParams::new("create_task").with_arguments(create_args))
         .await
         .expect("create_task should succeed");
     assert_ne!(created.is_error, Some(true));
@@ -135,10 +126,7 @@ async fn create_task_and_get_task_tools_round_trip() {
         .cloned()
         .expect("get args should be an object");
     let fetched = client
-        .call_tool(CallToolRequestParam {
-            name: "get_task".into(),
-            arguments: Some(get_args),
-        })
+        .call_tool(CallToolRequestParams::new("get_task").with_arguments(get_args))
         .await
         .expect("get_task should succeed");
     assert_ne!(fetched.is_error, Some(true));
@@ -153,12 +141,9 @@ async fn delete_task_tool_removes_a_task() {
     let project_id = create_project(&base_url).await;
 
     let headers = support::api_key_header().into_iter().collect();
-    let transport = StreamableHttpClientTransport::with_client(
-        reqwest::Client::builder()
-            .default_headers(headers)
-            .build()
-            .expect("test client should build"),
-        StreamableHttpClientTransportConfig::with_uri(format!("{base_url}/mcp")),
+    let transport = StreamableHttpClientTransport::from_config(
+        StreamableHttpClientTransportConfig::with_uri(format!("{base_url}/mcp"))
+            .custom_headers(headers),
     );
     let client = ClientInfo::default()
         .serve(transport)
@@ -173,10 +158,7 @@ async fn delete_task_tool_removes_a_task() {
     .cloned()
     .expect("create args should be an object");
     let created = client
-        .call_tool(CallToolRequestParam {
-            name: "create_task".into(),
-            arguments: Some(create_args),
-        })
+        .call_tool(CallToolRequestParams::new("create_task").with_arguments(create_args))
         .await
         .expect("create_task should succeed");
     let created_task: serde_json::Value = serde_json::from_str(
@@ -197,10 +179,7 @@ async fn delete_task_tool_removes_a_task() {
         .cloned()
         .expect("delete args should be an object");
     let deleted = client
-        .call_tool(CallToolRequestParam {
-            name: "delete_task".into(),
-            arguments: Some(delete_args),
-        })
+        .call_tool(CallToolRequestParams::new("delete_task").with_arguments(delete_args))
         .await
         .expect("delete_task should succeed");
     assert_ne!(deleted.is_error, Some(true));
@@ -220,10 +199,7 @@ async fn delete_task_tool_removes_a_task() {
         .cloned()
         .expect("get args should be an object");
     let fetched = client
-        .call_tool(CallToolRequestParam {
-            name: "get_task".into(),
-            arguments: Some(get_args),
-        })
+        .call_tool(CallToolRequestParams::new("get_task").with_arguments(get_args))
         .await
         .expect("get_task should return a tool-level error");
     assert_eq!(fetched.is_error, Some(true));
@@ -248,12 +224,9 @@ async fn list_projects_and_list_project_tasks_tools_return_created_data() {
     let project_id = create_project(&base_url).await;
 
     let headers = support::api_key_header().into_iter().collect();
-    let transport = StreamableHttpClientTransport::with_client(
-        reqwest::Client::builder()
-            .default_headers(headers)
-            .build()
-            .expect("test client should build"),
-        StreamableHttpClientTransportConfig::with_uri(format!("{base_url}/mcp")),
+    let transport = StreamableHttpClientTransport::from_config(
+        StreamableHttpClientTransportConfig::with_uri(format!("{base_url}/mcp"))
+            .custom_headers(headers),
     );
     let client = ClientInfo::default()
         .serve(transport)
@@ -261,10 +234,10 @@ async fn list_projects_and_list_project_tasks_tools_return_created_data() {
         .expect("client connects");
 
     let list_projects_result = client
-        .call_tool(CallToolRequestParam {
-            name: "list_projects".into(),
-            arguments: Some(serde_json::json!({}).as_object().cloned().unwrap()),
-        })
+        .call_tool(
+            CallToolRequestParams::new("list_projects")
+                .with_arguments(serde_json::json!({}).as_object().cloned().unwrap()),
+        )
         .await
         .expect("list_projects should succeed");
     let projects_text = list_projects_result.content.first().expect("content block");
@@ -282,10 +255,7 @@ async fn list_projects_and_list_project_tasks_tools_return_created_data() {
         .cloned()
         .expect("create args should be an object");
     client
-        .call_tool(CallToolRequestParam {
-            name: "create_task".into(),
-            arguments: Some(create_args),
-        })
+        .call_tool(CallToolRequestParams::new("create_task").with_arguments(create_args))
         .await
         .expect("create_task should succeed");
 
@@ -294,10 +264,7 @@ async fn list_projects_and_list_project_tasks_tools_return_created_data() {
         .cloned()
         .expect("list task args should be an object");
     let list_tasks_result = client
-        .call_tool(CallToolRequestParam {
-            name: "list_project_tasks".into(),
-            arguments: Some(list_tasks_args),
-        })
+        .call_tool(CallToolRequestParams::new("list_project_tasks").with_arguments(list_tasks_args))
         .await
         .expect("list_project_tasks should succeed");
     let tasks_text = list_tasks_result.content.first().expect("content block");
@@ -317,12 +284,9 @@ async fn transition_task_status_tool_enforces_workflow_rules() {
     let project_id = create_project(&base_url).await;
 
     let headers = support::api_key_header().into_iter().collect();
-    let transport = StreamableHttpClientTransport::with_client(
-        reqwest::Client::builder()
-            .default_headers(headers)
-            .build()
-            .expect("test client should build"),
-        StreamableHttpClientTransportConfig::with_uri(format!("{base_url}/mcp")),
+    let transport = StreamableHttpClientTransport::from_config(
+        StreamableHttpClientTransportConfig::with_uri(format!("{base_url}/mcp"))
+            .custom_headers(headers),
     );
     let client = ClientInfo::default()
         .serve(transport)
@@ -334,10 +298,7 @@ async fn transition_task_status_tool_enforces_workflow_rules() {
         .cloned()
         .expect("create args should be an object");
     let created = client
-        .call_tool(CallToolRequestParam {
-            name: "create_task".into(),
-            arguments: Some(create_args),
-        })
+        .call_tool(CallToolRequestParams::new("create_task").with_arguments(create_args))
         .await
         .expect("create_task should succeed");
     let created_task: serde_json::Value = serde_json::from_str(
@@ -358,10 +319,9 @@ async fn transition_task_status_tool_enforces_workflow_rules() {
         .cloned()
         .expect("invalid args should be an object");
     let invalid = client
-        .call_tool(CallToolRequestParam {
-            name: "transition_task_status".into(),
-            arguments: Some(invalid_args),
-        })
+        .call_tool(
+            CallToolRequestParams::new("transition_task_status").with_arguments(invalid_args),
+        )
         .await
         .expect("invalid transition should return a tool-level result");
     assert_eq!(invalid.is_error, Some(true));
@@ -371,10 +331,7 @@ async fn transition_task_status_tool_enforces_workflow_rules() {
         .cloned()
         .expect("valid args should be an object");
     let valid = client
-        .call_tool(CallToolRequestParam {
-            name: "transition_task_status".into(),
-            arguments: Some(valid_args),
-        })
+        .call_tool(CallToolRequestParams::new("transition_task_status").with_arguments(valid_args))
         .await
         .expect("valid transition call should return a result");
     assert_ne!(valid.is_error, Some(true));
@@ -401,12 +358,9 @@ async fn add_task_log_tool_appends_a_log_entry() {
     let project_id = create_project(&base_url).await;
 
     let headers = support::api_key_header().into_iter().collect();
-    let transport = StreamableHttpClientTransport::with_client(
-        reqwest::Client::builder()
-            .default_headers(headers)
-            .build()
-            .expect("test client should build"),
-        StreamableHttpClientTransportConfig::with_uri(format!("{base_url}/mcp")),
+    let transport = StreamableHttpClientTransport::from_config(
+        StreamableHttpClientTransportConfig::with_uri(format!("{base_url}/mcp"))
+            .custom_headers(headers),
     );
     let client = ClientInfo::default()
         .serve(transport)
@@ -418,10 +372,7 @@ async fn add_task_log_tool_appends_a_log_entry() {
         .cloned()
         .expect("create args should be an object");
     let created = client
-        .call_tool(CallToolRequestParam {
-            name: "create_task".into(),
-            arguments: Some(create_args),
-        })
+        .call_tool(CallToolRequestParams::new("create_task").with_arguments(create_args))
         .await
         .expect("create_task should succeed");
     let created_task: serde_json::Value = serde_json::from_str(
@@ -446,10 +397,7 @@ async fn add_task_log_tool_appends_a_log_entry() {
     .cloned()
     .expect("log args should be an object");
     let logged = client
-        .call_tool(CallToolRequestParam {
-            name: "add_task_log".into(),
-            arguments: Some(log_args),
-        })
+        .call_tool(CallToolRequestParams::new("add_task_log").with_arguments(log_args))
         .await
         .expect("add_task_log should succeed");
     assert_ne!(logged.is_error, Some(true));
@@ -477,12 +425,9 @@ async fn add_task_tag_and_remove_task_tag_tools_manage_tags() {
     let project_id = create_project(&base_url).await;
 
     let headers = support::api_key_header().into_iter().collect();
-    let transport = StreamableHttpClientTransport::with_client(
-        reqwest::Client::builder()
-            .default_headers(headers)
-            .build()
-            .expect("test client should build"),
-        StreamableHttpClientTransportConfig::with_uri(format!("{base_url}/mcp")),
+    let transport = StreamableHttpClientTransport::from_config(
+        StreamableHttpClientTransportConfig::with_uri(format!("{base_url}/mcp"))
+            .custom_headers(headers),
     );
     let client = ClientInfo::default()
         .serve(transport)
@@ -494,10 +439,7 @@ async fn add_task_tag_and_remove_task_tag_tools_manage_tags() {
         .cloned()
         .expect("create args should be an object");
     let created = client
-        .call_tool(CallToolRequestParam {
-            name: "create_task".into(),
-            arguments: Some(create_args),
-        })
+        .call_tool(CallToolRequestParams::new("create_task").with_arguments(create_args))
         .await
         .expect("create_task should succeed");
     let created_task: serde_json::Value = serde_json::from_str(
@@ -521,10 +463,7 @@ async fn add_task_tag_and_remove_task_tag_tools_manage_tags() {
     .cloned()
     .expect("add tag args should be an object");
     let tagged = client
-        .call_tool(CallToolRequestParam {
-            name: "add_task_tag".into(),
-            arguments: Some(add_args),
-        })
+        .call_tool(CallToolRequestParams::new("add_task_tag").with_arguments(add_args))
         .await
         .expect("add_task_tag should succeed");
     assert_ne!(tagged.is_error, Some(true));
@@ -552,10 +491,7 @@ async fn add_task_tag_and_remove_task_tag_tools_manage_tags() {
     .cloned()
     .expect("remove tag args should be an object");
     let removed = client
-        .call_tool(CallToolRequestParam {
-            name: "remove_task_tag".into(),
-            arguments: Some(remove_args),
-        })
+        .call_tool(CallToolRequestParams::new("remove_task_tag").with_arguments(remove_args))
         .await
         .expect("remove_task_tag should succeed");
     assert_ne!(removed.is_error, Some(true));
@@ -565,10 +501,7 @@ async fn add_task_tag_and_remove_task_tag_tools_manage_tags() {
         .cloned()
         .expect("get args should be an object");
     let refetched = client
-        .call_tool(CallToolRequestParam {
-            name: "get_task".into(),
-            arguments: Some(get_args),
-        })
+        .call_tool(CallToolRequestParams::new("get_task").with_arguments(get_args))
         .await
         .expect("get_task should succeed");
     let refetched_task: serde_json::Value = serde_json::from_str(
@@ -597,12 +530,9 @@ async fn update_task_tool_sets_agent_and_result_summary_without_touching_title()
     let project_id = create_project(&base_url).await;
 
     let headers = support::api_key_header().into_iter().collect();
-    let transport = StreamableHttpClientTransport::with_client(
-        reqwest::Client::builder()
-            .default_headers(headers)
-            .build()
-            .expect("test client should build"),
-        StreamableHttpClientTransportConfig::with_uri(format!("{base_url}/mcp")),
+    let transport = StreamableHttpClientTransport::from_config(
+        StreamableHttpClientTransportConfig::with_uri(format!("{base_url}/mcp"))
+            .custom_headers(headers),
     );
     let client = ClientInfo::default()
         .serve(transport)
@@ -614,10 +544,7 @@ async fn update_task_tool_sets_agent_and_result_summary_without_touching_title()
         .cloned()
         .expect("create args should be an object");
     let created = client
-        .call_tool(CallToolRequestParam {
-            name: "create_task".into(),
-            arguments: Some(create_args),
-        })
+        .call_tool(CallToolRequestParams::new("create_task").with_arguments(create_args))
         .await
         .expect("create_task should succeed");
     let created_task: serde_json::Value = serde_json::from_str(
@@ -642,10 +569,7 @@ async fn update_task_tool_sets_agent_and_result_summary_without_touching_title()
     .cloned()
     .expect("update args should be an object");
     let updated = client
-        .call_tool(CallToolRequestParam {
-            name: "update_task".into(),
-            arguments: Some(update_args),
-        })
+        .call_tool(CallToolRequestParams::new("update_task").with_arguments(update_args))
         .await
         .expect("update_task should succeed");
     assert_ne!(updated.is_error, Some(true));
@@ -674,12 +598,9 @@ async fn add_task_tag_returns_tool_errors_for_blank_and_noncanonical_names() {
     let project_id = create_project(&base_url).await;
 
     let headers = support::api_key_header().into_iter().collect();
-    let transport = StreamableHttpClientTransport::with_client(
-        reqwest::Client::builder()
-            .default_headers(headers)
-            .build()
-            .expect("test client should build"),
-        StreamableHttpClientTransportConfig::with_uri(format!("{base_url}/mcp")),
+    let transport = StreamableHttpClientTransport::from_config(
+        StreamableHttpClientTransportConfig::with_uri(format!("{base_url}/mcp"))
+            .custom_headers(headers),
     );
     let client = ClientInfo::default()
         .serve(transport)
@@ -691,10 +612,7 @@ async fn add_task_tag_returns_tool_errors_for_blank_and_noncanonical_names() {
         .cloned()
         .expect("create args should be an object");
     let created = client
-        .call_tool(CallToolRequestParam {
-            name: "create_task".into(),
-            arguments: Some(create_args),
-        })
+        .call_tool(CallToolRequestParams::new("create_task").with_arguments(create_args))
         .await
         .expect("create_task should succeed");
     let created_task: serde_json::Value = serde_json::from_str(
@@ -716,10 +634,7 @@ async fn add_task_tag_returns_tool_errors_for_blank_and_noncanonical_names() {
             .cloned()
             .expect("tag args should be an object");
         let result = client
-            .call_tool(CallToolRequestParam {
-                name: "add_task_tag".into(),
-                arguments: Some(arguments),
-            })
+            .call_tool(CallToolRequestParams::new("add_task_tag").with_arguments(arguments))
             .await
             .expect("validation failure should return a tool-level result");
         assert_eq!(result.is_error, Some(true), "{name:?} should be rejected");

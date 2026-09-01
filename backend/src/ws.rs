@@ -43,7 +43,7 @@ async fn handle_socket(mut socket: WebSocket, mut events: broadcast::Receiver<Ta
                     let Ok(message) = serde_json::to_string(&event) else {
                         continue;
                     };
-                    if socket.send(Message::Text(message)).await.is_err() {
+                    if socket.send(Message::Text(message.into())).await.is_err() {
                         break;
                     }
                 }

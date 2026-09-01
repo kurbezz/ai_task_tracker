@@ -29,6 +29,7 @@ pub struct AppState {
 }
 
 const DEFAULT_MCP_SESSION_KEEP_ALIVE_SECS: u64 = 1800;
+const DEFAULT_MCP_ALLOWED_HOSTS: &[&str] = &["localhost", "127.0.0.1", "::1"];
 
 fn mcp_session_keep_alive_from_env() -> Duration {
     let seconds = std::env::var("MCP_SESSION_KEEP_ALIVE_SECS")
@@ -38,14 +39,37 @@ fn mcp_session_keep_alive_from_env() -> Duration {
     Duration::from_secs(seconds)
 }
 
+fn mcp_allowed_hosts_from_env() -> Vec<String> {
+    std::env::var("MCP_ALLOWED_HOSTS")
+        .ok()
+        .map(|hosts| {
+            hosts
+                .split(',')
+                .map(str::trim)
+                .filter(|host| !host.is_empty())
+                .map(ToOwned::to_owned)
+                .collect()
+        })
+        .filter(|hosts: &Vec<String>| !hosts.is_empty())
+        .unwrap_or_else(|| {
+            DEFAULT_MCP_ALLOWED_HOSTS
+                .iter()
+                .map(|host| (*host).to_owned())
+                .collect()
+        })
+}
+
 pub fn build_router(state: AppState) -> Router {
     build_router_with_mcp_session_config(
         state,
-        SessionConfig {
-            keep_alive: Some(mcp_session_keep_alive_from_env()),
-            ..Default::default()
-        },
+        session_config_with_keep_alive(mcp_session_keep_alive_from_env()),
     )
+}
+
+fn session_config_with_keep_alive(keep_alive: Duration) -> SessionConfig {
+    let mut session_config = SessionConfig::default();
+    session_config.keep_alive = Some(keep_alive);
+    session_config
 }
 
 fn build_router_with_mcp_session_config(state: AppState, session_config: SessionConfig) -> Router {
@@ -55,30 +79,30 @@ fn build_router_with_mcp_session_config(state: AppState, session_config: Session
             get(handlers::projects::list_projects).post(handlers::projects::create_project),
         )
         .route(
-            "/projects/:id",
+            "/projects/{id}",
             get(handlers::projects::get_project)
                 .patch(handlers::projects::update_project)
                 .delete(handlers::projects::delete_project),
         )
         .route("/tasks", post(handlers::tasks::create_task))
         .route(
-            "/tasks/:id",
+            "/tasks/{id}",
             get(handlers::tasks::get_task)
                 .patch(handlers::tasks::update_task)
                 .delete(handlers::tasks::delete_task),
         )
         .route(
-            "/projects/:id/tasks",
+            "/projects/{id}/tasks",
             get(handlers::tasks::list_project_tasks),
         )
-        .route("/tasks/:id/status", post(handlers::tasks::transition_task))
+        .route("/tasks/{id}/status", post(handlers::tasks::transition_task))
         .route(
-            "/tasks/:id/logs",
+            "/tasks/{id}/logs",
             get(handlers::tasks::list_logs).post(handlers::tasks::create_log),
         )
-        .route("/tasks/:id/tags", post(handlers::tasks::attach_tag))
+        .route("/tasks/{id}/tags", post(handlers::tasks::attach_tag))
         .route(
-            "/tasks/:id/tags/:tag_id",
+            "/tasks/{id}/tags/{tag_id}",
             delete(handlers::tasks::remove_tag),
         )
         .route("/tags", get(handlers::tags::list_tags))
@@ -96,7 +120,7 @@ fn build_router_with_mcp_session_config(state: AppState, session_config: Session
             post(handlers::time_entries::sync_time_entries),
         )
         .route(
-            "/time-entries/:id",
+            "/time-entries/{id}",
             delete(handlers::time_entries::delete_time_entry)
                 .patch(handlers::time_entries::update_time_entry),
         )
@@ -121,12 +145,13 @@ fn build_router_with_mcp_session_config(state: AppState, session_config: Session
                         mcp_clockify.clone(),
                     ))
                 },
-                LocalSessionManager {
-                    session_config,
-                    ..Default::default()
-                }
-                .into(),
-                StreamableHttpServerConfig::default(),
+                {
+                    let mut session_manager = LocalSessionManager::default();
+                    session_manager.session_config = session_config;
+                    session_manager.into()
+                },
+                StreamableHttpServerConfig::default()
+                    .with_allowed_hosts(mcp_allowed_hosts_from_env()),
             ),
         )
         .layer(middleware::from_fn_with_state(
@@ -148,20 +173,19 @@ fn build_router_with_mcp_session_timeout(
     state: AppState,
     keep_alive: std::time::Duration,
 ) -> Router {
-    build_router_with_mcp_session_config(
-        state,
-        SessionConfig {
-            keep_alive: Some(keep_alive),
-            ..Default::default()
-        },
-    )
+    build_router_with_mcp_session_config(state, session_config_with_keep_alive(keep_alive))
 }
 
 #[cfg(test)]
 mod tests {
     use std::time::Duration;
 
+    use axum::{
+        body::Body,
+        http::{Request, StatusCode},
+    };
     use rmcp::model::ClientInfo;
+    use tower::ServiceExt;
 
     use super::*;
 
@@ -203,7 +227,57 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn mcp_session_expires_after_inactivity() {
+    async fn mcp_initialize_accepts_configured_production_host() {
+        let state = test_state().await;
+
+        let initialize_request = |host| {
+            Request::builder()
+                .method("POST")
+                .uri("/mcp")
+                .header("host", host)
+                .header("x-api-key", "test-key")
+                .header("accept", "application/json, text/event-stream")
+                .header("content-type", "application/json")
+                .body(Body::from(
+                    serde_json::json!({
+                        "jsonrpc": "2.0",
+                        "id": 1,
+                        "method": "initialize",
+                        "params": ClientInfo::default(),
+                    })
+                    .to_string(),
+                ))
+                .expect("initialize request should build")
+        };
+
+        let default_response = build_router(state.clone())
+            .oneshot(initialize_request("tracker.home.kurbezz.me"))
+            .await
+            .expect("initialize request should complete");
+        assert_eq!(default_response.status(), StatusCode::FORBIDDEN);
+
+        std::env::set_var("MCP_ALLOWED_HOSTS", "tracker.home.kurbezz.me");
+        let router = build_router(state);
+        std::env::remove_var("MCP_ALLOWED_HOSTS");
+
+        let rejected_response = router
+            .clone()
+            .oneshot(initialize_request("untrusted.example"))
+            .await
+            .expect("initialize request should complete");
+        assert_eq!(rejected_response.status(), StatusCode::FORBIDDEN);
+
+        let response = router
+            .oneshot(initialize_request("tracker.home.kurbezz.me"))
+            .await
+            .expect("initialize request should complete");
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert!(response.headers().contains_key("mcp-session-id"));
+    }
+
+    #[tokio::test]
+    async fn mcp_session_expiry_returns_not_found_and_allows_reinitialization() {
         let router =
             build_router_with_mcp_session_timeout(test_state().await, Duration::from_millis(25));
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
@@ -255,7 +329,24 @@ mod tests {
             .await
             .expect("resumed request should complete");
 
-        assert_eq!(resumed.status(), reqwest::StatusCode::UNAUTHORIZED);
+        assert_eq!(resumed.status(), reqwest::StatusCode::NOT_FOUND);
+
+        let reinitialized = client
+            .post(&url)
+            .header("x-api-key", "test-key")
+            .header("accept", "application/json, text/event-stream")
+            .json(&serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "initialize",
+                "params": ClientInfo::default(),
+            }))
+            .send()
+            .await
+            .expect("replacement initialize request should complete");
+
+        assert!(reinitialized.status().is_success());
+        assert!(reinitialized.headers().contains_key("mcp-session-id"));
         server.abort();
     }
 }

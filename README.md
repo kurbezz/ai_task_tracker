@@ -78,3 +78,13 @@ Example client configuration (Claude Code / opencode style):
 Available tools: `create_task`, `get_task`, `list_projects`, `list_project_tasks`,
 `transition_task_status`, `add_task_log`, `add_task_tag`, `remove_task_tag`, `update_task`.
 Each tool shares the REST API's validation, persistence, and workflow-transition rules.
+
+MCP sessions are in-memory. After an idle timeout or server restart, a request using an old
+`Mcp-Session-Id` receives HTTP 404. MCP clients must initialize a new session by sending
+`initialize` without that header. The Compose deployment uses a 24-hour idle timeout and
+restarts the container when its process exits.
+
+The MCP transport validates `Host` to prevent DNS-rebinding requests. By default it accepts
+only `localhost`, `127.0.0.1`, and `::1`. Set `MCP_ALLOWED_HOSTS` to a comma-separated allowlist
+when deploying at another authority; this replaces the default list. Compose sets it explicitly
+to `tracker.home.kurbezz.me` for the production reverse proxy.

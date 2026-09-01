@@ -1,6 +1,6 @@
 use rmcp::{
     handler::server::{router::tool::ToolRouter, wrapper::Parameters},
-    model::{CallToolResult, Content, ServerCapabilities, ServerInfo},
+    model::{CallToolResult, ContentBlock, ServerCapabilities, ServerInfo},
     tool, tool_handler, tool_router, ErrorData as McpError, ServerHandler,
 };
 use sqlx::SqlitePool;
@@ -17,7 +17,7 @@ use crate::{
 fn json_result<T: serde::Serialize>(value: &T) -> Result<CallToolResult, McpError> {
     let text = serde_json::to_string(value)
         .map_err(|error| McpError::internal_error(error.to_string(), None))?;
-    Ok(CallToolResult::success(vec![Content::text(text)]))
+    Ok(CallToolResult::success(vec![ContentBlock::text(text)]))
 }
 
 fn tool_result<T: serde::Serialize>(
@@ -25,9 +25,9 @@ fn tool_result<T: serde::Serialize>(
 ) -> Result<CallToolResult, McpError> {
     match result {
         Ok(value) => json_result(&value),
-        Err(AppError::NotFound) => Ok(CallToolResult::error(vec![Content::text("not found")])),
+        Err(AppError::NotFound) => Ok(CallToolResult::error(vec![ContentBlock::text("not found")])),
         Err(AppError::Validation(message) | AppError::InvalidTransition(message)) => {
-            Ok(CallToolResult::error(vec![Content::text(message)]))
+            Ok(CallToolResult::error(vec![ContentBlock::text(message)]))
         }
         Err(AppError::Internal(error)) => {
             eprintln!("internal database error: {error}");
@@ -116,7 +116,7 @@ impl TaskMcpServer {
 impl TaskMcpServer {
     #[tool(description = "Health check for the AI Task Tracker MCP server")]
     async fn ping(&self) -> Result<CallToolResult, McpError> {
-        Ok(CallToolResult::success(vec![Content::text("pong")]))
+        Ok(CallToolResult::success(vec![ContentBlock::text("pong")]))
     }
 
     #[tool(description = "Create a new task in a project. New tasks start in TO_DO status.")]
@@ -149,7 +149,7 @@ impl TaskMcpServer {
     ) -> Result<CallToolResult, McpError> {
         let state = self.state();
         match tasks::delete_task_core(&state, &task_id).await {
-            Ok(()) => Ok(CallToolResult::success(vec![Content::text("deleted")])),
+            Ok(()) => Ok(CallToolResult::success(vec![ContentBlock::text("deleted")])),
             Err(error) => tool_result::<()>(Err(error)),
         }
     }
@@ -213,7 +213,7 @@ impl TaskMcpServer {
     ) -> Result<CallToolResult, McpError> {
         let state = self.state();
         match tasks::remove_tag_core(&state, &task_id, &tag_id).await {
-            Ok(()) => Ok(CallToolResult::success(vec![Content::text("removed")])),
+            Ok(()) => Ok(CallToolResult::success(vec![ContentBlock::text("removed")])),
             Err(error) => tool_result::<()>(Err(error)),
         }
     }
@@ -242,12 +242,8 @@ impl TaskMcpServer {
 #[tool_handler(router = self.tool_router)]
 impl ServerHandler for TaskMcpServer {
     fn get_info(&self) -> ServerInfo {
-        ServerInfo {
-            capabilities: ServerCapabilities::builder().enable_tools().build(),
-            instructions: Some(
-                "Tools for AI agents to self-report progress on AI Task Tracker tasks.".to_owned(),
-            ),
-            ..Default::default()
-        }
+        ServerInfo::new(ServerCapabilities::builder().enable_tools().build()).with_instructions(
+            "Tools for AI agents to self-report progress on AI Task Tracker tasks.",
+        )
     }
 }
