@@ -240,12 +240,14 @@ impl TaskMcpServer {
             tasks::update_task_fields(
                 &state,
                 &task_id,
-                title,
-                description,
-                agent,
-                result_summary,
-                source_url,
-                pr_url,
+                tasks::UpdateTaskFields {
+                    title,
+                    description,
+                    agent,
+                    result_summary,
+                    source_url,
+                    pr_url,
+                },
             )
             .await,
         )

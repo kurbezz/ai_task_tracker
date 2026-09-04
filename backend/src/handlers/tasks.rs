@@ -146,16 +146,28 @@ pub async fn update_task(
     Ok(Json(response))
 }
 
+pub(crate) struct UpdateTaskFields {
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub agent: Option<String>,
+    pub result_summary: Option<String>,
+    pub source_url: Option<String>,
+    pub pr_url: Option<String>,
+}
+
 pub(crate) async fn update_task_fields(
     state: &AppState,
     task_id: &str,
-    title: Option<String>,
-    description: Option<String>,
-    agent: Option<String>,
-    result_summary: Option<String>,
-    source_url: Option<String>,
-    pr_url: Option<String>,
+    fields: UpdateTaskFields,
 ) -> Result<TaskResponse, AppError> {
+    let UpdateTaskFields {
+        title,
+        description,
+        agent,
+        result_summary,
+        source_url,
+        pr_url,
+    } = fields;
     let task = fetch_task(state, task_id).await?;
     let title = title.unwrap_or(task.title);
     validate_title(&title)?;
