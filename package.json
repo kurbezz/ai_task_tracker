@@ -1,0 +1,12 @@
+{
+  "name": "ai-task-tracker",
+  "private": true,
+  "version": "0.0.0",
+  "description": "Root package used only to install and manage git hooks (lefthook).",
+  "scripts": {
+    "prepare": "lefthook install"
+  },
+  "devDependencies": {
+    "lefthook": "^1.7.15"
+  }
+}
