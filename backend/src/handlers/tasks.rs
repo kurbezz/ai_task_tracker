@@ -149,18 +149,25 @@ pub async fn update_task(
 pub(crate) async fn update_task_fields(
     state: &AppState,
     task_id: &str,
+    title: Option<String>,
+    description: Option<String>,
     agent: Option<String>,
     result_summary: Option<String>,
     source_url: Option<String>,
     pr_url: Option<String>,
 ) -> Result<TaskResponse, AppError> {
     let task = fetch_task(state, task_id).await?;
+    let title = title.unwrap_or(task.title);
+    validate_title(&title)?;
+    let description = description.or(task.description);
     let agent = agent.or(task.agent);
     let result_summary = result_summary.or(task.result_summary);
     let source_url = source_url.or(task.source_url);
     let pr_url = pr_url.or(task.pr_url);
 
-    sqlx::query("UPDATE tasks SET agent = ?, result_summary = ?, source_url = ?, pr_url = ?, updated_at = ? WHERE id = ?")
+    sqlx::query("UPDATE tasks SET title = ?, description = ?, agent = ?, result_summary = ?, source_url = ?, pr_url = ?, updated_at = ? WHERE id = ?")
+        .bind(&title)
+        .bind(&description)
         .bind(&agent)
         .bind(&result_summary)
         .bind(&source_url)

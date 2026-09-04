@@ -75,6 +75,8 @@ struct RemoveTaskTagParams {
 #[derive(serde::Deserialize, schemars::JsonSchema)]
 struct UpdateTaskParams {
     task_id: String,
+    title: Option<String>,
+    description: Option<String>,
     agent: Option<String>,
     result_summary: Option<String>,
     source_url: Option<String>,
@@ -219,12 +221,14 @@ impl TaskMcpServer {
     }
 
     #[tool(
-        description = "Update a task's assigned agent and/or result summary. Omitted fields are left unchanged."
+        description = "Update a task's title, description, assigned agent, and/or result summary. Omitted fields are left unchanged."
     )]
     async fn update_task(
         &self,
         Parameters(UpdateTaskParams {
             task_id,
+            title,
+            description,
             agent,
             result_summary,
             source_url,
@@ -233,8 +237,17 @@ impl TaskMcpServer {
     ) -> Result<CallToolResult, McpError> {
         let state = self.state();
         tool_result(
-            tasks::update_task_fields(&state, &task_id, agent, result_summary, source_url, pr_url)
-                .await,
+            tasks::update_task_fields(
+                &state,
+                &task_id,
+                title,
+                description,
+                agent,
+                result_summary,
+                source_url,
+                pr_url,
+            )
+            .await,
         )
     }
 }

@@ -593,6 +593,120 @@ async fn update_task_tool_sets_agent_and_result_summary_without_touching_title()
 }
 
 #[tokio::test]
+async fn update_task_tool_sets_title_and_description_and_rejects_blank_title() {
+    let (base_url, server) = support::spawn_http_server(support::state().await).await;
+    let project_id = create_project(&base_url).await;
+
+    let headers = support::api_key_header().into_iter().collect();
+    let transport = StreamableHttpClientTransport::from_config(
+        StreamableHttpClientTransportConfig::with_uri(format!("{base_url}/mcp"))
+            .custom_headers(headers),
+    );
+    let client = ClientInfo::default()
+        .serve(transport)
+        .await
+        .expect("client connects");
+
+    let create_args = serde_json::json!({
+        "project_id": project_id,
+        "title": "Original title",
+        "description": "Original description"
+    })
+    .as_object()
+    .cloned()
+    .expect("create args should be an object");
+    let created = client
+        .call_tool(CallToolRequestParams::new("create_task").with_arguments(create_args))
+        .await
+        .expect("create_task should succeed");
+    let created_task: serde_json::Value = serde_json::from_str(
+        created
+            .content
+            .first()
+            .expect("content block")
+            .as_text()
+            .expect("text content")
+            .text
+            .as_str(),
+    )
+    .expect("valid task json");
+    let task_id = created_task["id"].as_str().expect("task id").to_owned();
+
+    // Update title and description.
+    let update_args = serde_json::json!({
+        "task_id": task_id,
+        "title": "New title",
+        "description": "New description"
+    })
+    .as_object()
+    .cloned()
+    .expect("update args should be an object");
+    let updated = client
+        .call_tool(CallToolRequestParams::new("update_task").with_arguments(update_args))
+        .await
+        .expect("update_task should succeed");
+    assert_ne!(updated.is_error, Some(true));
+    let updated_task: serde_json::Value = serde_json::from_str(
+        updated
+            .content
+            .first()
+            .expect("content block")
+            .as_text()
+            .expect("text content")
+            .text
+            .as_str(),
+    )
+    .expect("valid task json");
+    assert_eq!(updated_task["title"], "New title");
+    assert_eq!(updated_task["description"], "New description");
+
+    // Omitting title/description leaves existing values untouched.
+    let noop_args = serde_json::json!({
+        "task_id": task_id,
+        "agent": "fixer"
+    })
+    .as_object()
+    .cloned()
+    .expect("noop args should be an object");
+    let noop_updated = client
+        .call_tool(CallToolRequestParams::new("update_task").with_arguments(noop_args))
+        .await
+        .expect("update_task should succeed");
+    assert_ne!(noop_updated.is_error, Some(true));
+    let noop_updated_task: serde_json::Value = serde_json::from_str(
+        noop_updated
+            .content
+            .first()
+            .expect("content block")
+            .as_text()
+            .expect("text content")
+            .text
+            .as_str(),
+    )
+    .expect("valid task json");
+    assert_eq!(noop_updated_task["title"], "New title");
+    assert_eq!(noop_updated_task["description"], "New description");
+    assert_eq!(noop_updated_task["agent"], "fixer");
+
+    // Empty-string title is rejected.
+    let blank_title_args = serde_json::json!({
+        "task_id": task_id,
+        "title": ""
+    })
+    .as_object()
+    .cloned()
+    .expect("blank title args should be an object");
+    let blank_title_result = client
+        .call_tool(CallToolRequestParams::new("update_task").with_arguments(blank_title_args))
+        .await
+        .expect("update_task call should complete");
+    assert_eq!(blank_title_result.is_error, Some(true));
+
+    client.cancel().await.expect("cancel client");
+    server.abort();
+}
+
+#[tokio::test]
 async fn add_task_tag_returns_tool_errors_for_blank_and_noncanonical_names() {
     let (base_url, server) = support::spawn_http_server(support::state().await).await;
     let project_id = create_project(&base_url).await;

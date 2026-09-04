@@ -36,6 +36,10 @@ export function TaskDetail({ taskId, onClose, onTaskChange }: TaskDetailProps) {
   const [editTimeHours, setEditTimeHours] = useState("");
   const [timeEntryBusy, setTimeEntryBusy] = useState("");
   const [copied, setCopied] = useState(false);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState("");
+  const [editingDescription, setEditingDescription] = useState(false);
+  const [descriptionDraft, setDescriptionDraft] = useState("");
 
   async function refresh() {
     const [nextTask, nextLogs, nextTimeEntries] = await Promise.all([getTask(taskId), listLogs(taskId), listTaskTimeEntries(taskId)]);
@@ -102,6 +106,53 @@ export function TaskDetail({ taskId, onClose, onTaskChange }: TaskDetailProps) {
       source_url: sourceUrl.trim() || null,
       pr_url: prUrl.trim() || null,
     }), true);
+  }
+
+  function startEditTitle() {
+    if (!task) return;
+    setError("");
+    setTitleDraft(task.title);
+    setEditingTitle(true);
+  }
+
+  function cancelEditTitle() {
+    setEditingTitle(false);
+    setError("");
+  }
+
+  function saveTitleEdit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const trimmed = titleDraft.trim();
+    if (!trimmed) {
+      setError("Title is required");
+      return;
+    }
+    mutate("save-title", () => updateTask(taskId, { title: trimmed }), true, async () => {
+      await refresh();
+      await onTaskChange();
+      setEditingTitle(false);
+    });
+  }
+
+  function startEditDescription() {
+    if (!task) return;
+    setError("");
+    setDescriptionDraft(task.description ?? "");
+    setEditingDescription(true);
+  }
+
+  function cancelEditDescription() {
+    setEditingDescription(false);
+    setError("");
+  }
+
+  function saveDescriptionEdit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    mutate("save-description", () => updateTask(taskId, { description: descriptionDraft.trim() || null }), true, async () => {
+      await refresh();
+      await onTaskChange();
+      setEditingDescription(false);
+    });
   }
 
   function submitLog(event: FormEvent<HTMLFormElement>) {
@@ -202,7 +253,18 @@ export function TaskDetail({ taskId, onClose, onTaskChange }: TaskDetailProps) {
         <div className="detail-topline"><span className="section-kicker">Task detail</span><button className="icon-button" type="button" onClick={onClose} aria-label="Close task detail">×</button></div>
         {loading ? <p className="loading-copy">Loading task…</p> : !task ? <div className="error-banner" role="alert">{error || "Task could not be loaded."}</div> : <>
           <div className="detail-title-row">
-            <h2 className="detail-title">{task.title}</h2>
+            {editingTitle ? (
+              <form className="title-edit-form" onSubmit={saveTitleEdit}>
+                <input className="title-edit-input" value={titleDraft} onChange={(event) => setTitleDraft(event.target.value)} required autoFocus />
+                <button className="button button-primary button-small" disabled={busy === "save-title"}>{busy === "save-title" ? "Saving…" : "Save"}</button>
+                <button className="button button-ghost button-small" type="button" onClick={cancelEditTitle}>Cancel</button>
+              </form>
+            ) : (
+              <>
+                <h2 className="detail-title">{task.title}</h2>
+                <button className="button button-ghost button-small" type="button" onClick={startEditTitle}>Edit</button>
+              </>
+            )}
             <button
               className="copy-command-button"
               type="button"
@@ -222,7 +284,23 @@ export function TaskDetail({ taskId, onClose, onTaskChange }: TaskDetailProps) {
             <p className="field-note">Move forward one stage, or return work to an earlier stage.</p>
           </section>
 
-          <section className="detail-section"><h3>Brief</h3><p className="detail-description">{task.description || "No description has been added."}</p></section>
+          <section className="detail-section">
+            <h3>Brief</h3>
+            {editingDescription ? (
+              <form className="edit-form" onSubmit={saveDescriptionEdit}>
+                <textarea rows={4} value={descriptionDraft} onChange={(event) => setDescriptionDraft(event.target.value)} placeholder="Describe the task" autoFocus />
+                <div className="detail-description-actions">
+                  <button className="button button-primary button-small" disabled={busy === "save-description"}>{busy === "save-description" ? "Saving…" : "Save"}</button>
+                  <button className="button button-ghost button-small" type="button" onClick={cancelEditDescription}>Cancel</button>
+                </div>
+              </form>
+            ) : (
+              <>
+                <p className="detail-description">{task.description || "No description has been added."}</p>
+                <button className="button button-ghost button-small detail-edit-trigger" type="button" onClick={startEditDescription}>Edit</button>
+              </>
+            )}
+          </section>
 
           <form className="detail-section edit-form" onSubmit={saveDetails}>
             <h3>Assignment & outcome</h3>
