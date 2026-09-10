@@ -1,7 +1,7 @@
 use ai_task_tracker::{auth::hash_key, db, AppState};
 use axum::{
     body::Body,
-    http::{Method, Request},
+    http::{HeaderValue, Method, Request},
     response::Response,
 };
 use http_body_util::BodyExt;
@@ -67,6 +67,21 @@ pub fn api_request(method: Method, uri: &str, body: Option<Value>) -> Request<Bo
         None => Body::empty(),
     };
     builder.body(body).unwrap()
+}
+
+#[allow(dead_code)]
+pub fn api_request_with_idempotency_key(
+    method: Method,
+    uri: &str,
+    body: Option<Value>,
+    idempotency_key: &str,
+) -> Request<Body> {
+    let mut request = api_request(method, uri, body);
+    request.headers_mut().insert(
+        "idempotency-key",
+        HeaderValue::from_str(idempotency_key).unwrap(),
+    );
+    request
 }
 
 #[allow(dead_code)]

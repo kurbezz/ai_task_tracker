@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { createSessionState } from "./state";
+import { createSessionState, startTurn } from "./state";
 import { applyToolExecuteAfter } from "./tool-events";
+import { getResponseProgressCandidate } from "./turns";
 
 describe("applyToolExecuteAfter", () => {
   it("flags a mutating bash command and detects a commit", () => {
@@ -55,6 +56,30 @@ describe("applyToolExecuteAfter", () => {
     expect(state.status).toBe("TO_AGENT");
   });
 
+  it("captures response progress only from a successful transition for the task attached to the active turn", () => {
+    const state = createSessionState();
+    state.attachedTaskId = "task-1";
+    startTurn(state, "m-1");
+
+    applyToolExecuteAfter(state, {
+      tool: "mcp_Ai-task-tracker_transition_task_status",
+      args: { task_id: "task-1", status: "TO_REVIEW" },
+      outputText: JSON.stringify({ id: "task-2", status: "TO_REVIEW" }),
+    });
+    expect(getResponseProgressCandidate(state)).toBeNull();
+
+    applyToolExecuteAfter(state, {
+      tool: "mcp_Ai-task-tracker_transition_task_status",
+      args: { task_id: "task-1", status: "TO_REVIEW" },
+      outputText: JSON.stringify({ id: "task-1", status: "TO_REVIEW" }),
+    });
+    expect(getResponseProgressCandidate(state)).toEqual({
+      taskId: "task-1",
+      status: "TO_REVIEW",
+      message: "Updated task task-1 status to TO_REVIEW.",
+    });
+  });
+
   it("flags plan/spec context from a read path", () => {
     const state = createSessionState();
     applyToolExecuteAfter(state, {
@@ -75,5 +100,35 @@ describe("applyToolExecuteAfter", () => {
       }),
     ).not.toThrow();
     expect(state.taskId).toBeNull();
+  });
+
+  it("marks only a same-turn pending /tt intent after a matching successful get_task result", () => {
+    const state = createSessionState();
+    state.pendingAttachmentTaskId = "task-1";
+    const turn = startTurn(state, "m-1");
+
+    applyToolExecuteAfter(state, {
+      tool: "mcp_Ai-task-tracker_get_task",
+      args: { task_id: "task-1" },
+      outputText: "not json",
+    });
+    applyToolExecuteAfter(state, {
+      tool: "mcp_Ai-task-tracker_get_task",
+      args: { task_id: "task-2" },
+      outputText: JSON.stringify({ id: "task-2", status: "TO_DO" }),
+    });
+    applyToolExecuteAfter(state, {
+      tool: "mcp_Ai-task-tracker_get_task",
+      args: { task_id: "task-1" },
+      outputText: JSON.stringify({ id: "task-1", status: "TO_DO", error: "request failed" }),
+    });
+    expect(turn.pendingAttachment?.confirmable).toBe(false);
+
+    applyToolExecuteAfter(state, {
+      tool: "mcp_Ai-task-tracker_get_task",
+      args: { task_id: "task-1" },
+      outputText: JSON.stringify({ id: "task-1", status: "TO_DO" }),
+    });
+    expect(turn.pendingAttachment?.confirmable).toBe(true);
   });
 });

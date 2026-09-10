@@ -22,8 +22,7 @@ export const REMINDER_RULES: ReminderRule[] = [
   {
     id: "to-review",
     matches: (s) => s.status === "TO_AGENT" && s.didCommitSinceLastReminder,
-    text:
-      "A commit was made on this task. Consider add_task_log with a summary and transition_task_status to TO_REVIEW.",
+    text: "A commit was made on this task. Consider transition_task_status to TO_REVIEW.",
   },
   {
     id: "to-deploy",
@@ -38,6 +37,15 @@ export const REMINDER_RULES: ReminderRule[] = [
 ];
 
 export function evaluateReminder(state: SessionState): ReminderRule | null {
+  for (const rule of REMINDER_RULES) {
+    if (state.remindedFor.has(rule.id)) continue;
+    if (rule.matches(state)) return rule;
+  }
+  return null;
+}
+
+/** Evaluates status lifecycle nudges without suggesting tracker log activity. */
+export function evaluateLifecycleReminder(state: SessionState): ReminderRule | null {
   for (const rule of REMINDER_RULES) {
     if (state.remindedFor.has(rule.id)) continue;
     if (rule.matches(state)) return rule;

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { createSessionState } from "./state";
-import { evaluateReminder } from "./reminders";
+import { evaluateLifecycleReminder, evaluateReminder } from "./reminders";
 
 describe("evaluateReminder", () => {
   it("returns null for a fresh session with no signals", () => {
@@ -31,6 +31,7 @@ describe("evaluateReminder", () => {
     state.didCommitSinceLastReminder = true;
     const rule = evaluateReminder(state);
     expect(rule?.id).toBe("to-review");
+    expect(rule?.text).not.toContain("add_task_log");
   });
 
   it("suggests TO_DEPLOY when TO_REVIEW and a push/PR happened", () => {
@@ -56,5 +57,25 @@ describe("evaluateReminder", () => {
     state.hadMutatingToolCall = true;
     state.remindedFor.add("create-task");
     expect(evaluateReminder(state)).toBeNull();
+  });
+
+  it("evaluates lifecycle reminders without suggesting a task log", () => {
+    const state = createSessionState();
+    state.hadMutatingToolCall = true;
+    state.taskId = "task-1";
+    state.status = "TO_AGENT";
+    state.didCommitSinceLastReminder = true;
+
+    const rule = evaluateLifecycleReminder(state);
+
+    expect(rule?.id).toBe("to-review");
+    expect(rule?.text).not.toContain("add_task_log");
+  });
+
+  it("retains the create-task lifecycle reminder", () => {
+    const state = createSessionState();
+    state.hadMutatingToolCall = true;
+
+    expect(evaluateLifecycleReminder(state)?.id).toBe("create-task");
   });
 });

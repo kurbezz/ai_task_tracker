@@ -88,3 +88,30 @@ The MCP transport validates `Host` to prevent DNS-rebinding requests. By default
 only `localhost`, `127.0.0.1`, and `::1`. Set `MCP_ALLOWED_HOSTS` to a comma-separated allowlist
 when deploying at another authority; this replaces the default list. Compose sets it explicitly
 to `tracker.home.kurbezz.me` for the production reverse proxy.
+
+## Post-response OpenCode logging
+
+Configure direct post-response logging in the environment inherited by OpenCode:
+
+```bash
+export AI_TRACKER_URL="http://127.0.0.1:3000"
+export AI_TRACKER_API_KEY="replace-with-your-key"
+export AI_TRACKER_QUEUE_PATH="$HOME/.local/state/opencode/ai-task-tracker-queue.json"
+export AI_TRACKER_LOG_AUTHOR="opencode"
+```
+
+Restart OpenCode after changing any inherited environment value. The tracker URL is normalized so
+requests use one `/api` separator. `AI_TRACKER_LOG_AUTHOR` controls the author recorded for these
+logs and defaults to `opencode`.
+
+The queue contains task IDs and messages. It must live outside the repository, is created with
+owner-only permissions, survives restarts, and is retried asynchronously. Missing
+`AI_TRACKER_URL`, `AI_TRACKER_API_KEY`, or `AI_TRACKER_QUEUE_PATH` disables only automatic direct
+logs; `/tt` session state and MCP tools remain usable. Keys are sent only in `X-Api-Key` and must
+never be logged.
+
+`/tt <taskId>` first uses `get_task` to validate the task and asks for confirmation. After the user
+explicitly confirms, it validates the task again and invokes the plugin's no-argument
+`task_tracker_mark_attachment_candidate` tool. This local tool only queues a verified attachment
+candidate; it does not call tracker REST or MCP logging, and delivery is deferred until
+`session.idle`. Tool invocations, including this marker, can be visible in OpenCode tool transcripts.

@@ -1,6 +1,6 @@
 use axum::{
     extract::{Path, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::IntoResponse,
     Json,
 };
@@ -335,11 +335,19 @@ pub async fn list_logs(
 pub async fn create_log(
     State(state): State<AppState>,
     Path(task_id): Path<String>,
+    headers: HeaderMap,
     Json(input): Json<CreateLog>,
 ) -> Result<impl IntoResponse, AppError> {
+    let idempotency_key = idempotency_key_from_headers(&headers)?;
+    let (log, created) =
+        create_log_with_idempotency_core(&state, &task_id, input, idempotency_key).await?;
     Ok((
-        StatusCode::CREATED,
-        Json(create_log_core(&state, &task_id, input).await?),
+        if created {
+            StatusCode::CREATED
+        } else {
+            StatusCode::OK
+        },
+        Json(log),
     ))
 }
 
@@ -348,6 +356,19 @@ pub(crate) async fn create_log_core(
     task_id: &str,
     input: CreateLog,
 ) -> Result<TaskLog, AppError> {
+    Ok(
+        create_log_with_idempotency_core(state, task_id, input, None)
+            .await?
+            .0,
+    )
+}
+
+async fn create_log_with_idempotency_core(
+    state: &AppState,
+    task_id: &str,
+    input: CreateLog,
+    idempotency_key: Option<String>,
+) -> Result<(TaskLog, bool), AppError> {
     fetch_task(state, task_id).await?;
     validate_log(&input.author, &input.message)?;
 
@@ -358,23 +379,82 @@ pub(crate) async fn create_log_core(
         message: input.message,
         created_at: Utc::now().to_rfc3339(),
     };
-    sqlx::query(
-        "INSERT INTO task_logs (id, task_id, author, message, created_at) VALUES (?, ?, ?, ?, ?)",
-    )
-    .bind(&log.id)
-    .bind(&log.task_id)
-    .bind(&log.author)
-    .bind(&log.message)
-    .bind(&log.created_at)
-    .execute(&state.pool)
-    .await
-    .map_err(AppError::Internal)?;
+    let inserted = if let Some(idempotency_key) = idempotency_key {
+        let result = sqlx::query(
+            "INSERT INTO task_logs (id, task_id, author, message, created_at, idempotency_key) \
+             VALUES (?, ?, ?, ?, ?, ?) \
+             ON CONFLICT(idempotency_key) WHERE idempotency_key IS NOT NULL DO NOTHING",
+        )
+        .bind(&log.id)
+        .bind(&log.task_id)
+        .bind(&log.author)
+        .bind(&log.message)
+        .bind(&log.created_at)
+        .bind(&idempotency_key)
+        .execute(&state.pool)
+        .await
+        .map_err(AppError::Internal)?;
 
-    let _ = state.events.send(TaskEvent::LogAdded {
-        task_id: task_id.to_owned(),
-        log: log.clone(),
-    });
-    Ok(log)
+        if result.rows_affected() == 0 {
+            let existing = sqlx::query_as::<_, TaskLog>(
+                "SELECT id, task_id, author, message, created_at FROM task_logs \
+                 WHERE idempotency_key = ?",
+            )
+            .bind(&idempotency_key)
+            .fetch_one(&state.pool)
+            .await
+            .map_err(AppError::Internal)?;
+            if existing.task_id != task_id {
+                return Err(AppError::InvalidTransition(
+                    "idempotency key has already been used for another task".to_owned(),
+                ));
+            }
+            return Ok((existing, false));
+        }
+        true
+    } else {
+        sqlx::query(
+            "INSERT INTO task_logs (id, task_id, author, message, created_at) VALUES (?, ?, ?, ?, ?)",
+        )
+        .bind(&log.id)
+        .bind(&log.task_id)
+        .bind(&log.author)
+        .bind(&log.message)
+        .bind(&log.created_at)
+        .execute(&state.pool)
+        .await
+        .map_err(AppError::Internal)?;
+        true
+    };
+
+    if inserted {
+        let _ = state.events.send(TaskEvent::LogAdded {
+            task_id: task_id.to_owned(),
+            log: log.clone(),
+        });
+    }
+    Ok((log, inserted))
+}
+
+fn idempotency_key_from_headers(headers: &HeaderMap) -> Result<Option<String>, AppError> {
+    let mut values = headers.get_all("idempotency-key").iter();
+    let Some(value) = values.next() else {
+        return Ok(None);
+    };
+    if values.next().is_some() {
+        return Err(AppError::BadRequest(
+            "idempotency key must be supplied at most once".to_owned(),
+        ));
+    }
+    let value = value
+        .to_str()
+        .map_err(|_| AppError::BadRequest("idempotency key must be valid UTF-8".to_owned()))?;
+    if value.trim().is_empty() {
+        return Err(AppError::BadRequest(
+            "idempotency key must not be empty".to_owned(),
+        ));
+    }
+    Ok(Some(value.to_owned()))
 }
 
 pub async fn attach_tag(
