@@ -1,0 +1,15 @@
+{
+  "version": "1.0.0",
+  "updatedAt": "2026-09-16T11:25:00.000Z",
+  "dependencies": [
+    {
+      "name": "OpenCode V2 plugin loader",
+      "resolvedVersion": "2.0.4",
+      "repoUrl": "https://github.com/anomalyco/opencode.git",
+      "ref": "466b3e594d3df396a57340249590a70c5c358c8a",
+      "path": ".slim/clonedeps/repos/anomalyco__opencode",
+      "packagePath": "packages/core/src/plugin",
+      "reason": "Read-only source used to diagnose V2.0.4 configured local-plugin loading."
+    }
+  ]
+}
