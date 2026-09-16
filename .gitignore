@@ -3,3 +3,7 @@ frontend/.env*
 !frontend/.env.example
 node_modules/
 *.ai-task-tracker-queue.json
+
+# BEGIN oh-my-opencode-slim clonedeps
+.slim/clonedeps/repos/
+# END oh-my-opencode-slim clonedeps
