@@ -20,6 +20,7 @@ export function BoardPage() {
   const [taskProjectId, setTaskProjectId] = useState("");
   const [showTaskForm, setShowTaskForm] = useState(false);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [selectedOriginY, setSelectedOriginY] = useState<number | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -151,7 +152,7 @@ export function BoardPage() {
             {columnTasks.map((task) => (
               <TaskCard
                 task={task}
-                onSelect={setSelectedTaskId}
+                onSelect={(taskId, originY) => { setSelectedTaskId(taskId); setSelectedOriginY(originY); }}
                 projectName={projectFilter ? undefined : projectsById.get(task.project_id)?.name}
                 key={task.id}
               />
@@ -160,7 +161,7 @@ export function BoardPage() {
           </div>
         </section>;
       })}</div>}
-      {selectedTaskId && <TaskDetail taskId={selectedTaskId} onClose={() => setSelectedTaskId(null)} onTaskChange={loadBoard} />}
+      {selectedTaskId && <TaskDetail taskId={selectedTaskId} originY={selectedOriginY} onClose={() => { setSelectedTaskId(null); setSelectedOriginY(null); }} onTaskChange={loadBoard} />}
     </section>
   );
 }

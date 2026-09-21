@@ -1,4 +1,5 @@
-import { FormEvent, useEffect, useState } from "react";
+import { CSSProperties, FormEvent, useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { addLog, addTag, createTimeEntry, deleteTask, deleteTimeEntry, getTask, listLogs, listTaskTimeEntries, removeTag, transitionTask, updateTask, updateTimeEntry } from "../api";
 import { formatHours, todayLocal } from "../timeFormat";
 import { STATUS_LABELS, STATUS_ORDER, type Status, type Task, type TaskLog, type TimeEntry } from "../types";
@@ -9,6 +10,12 @@ interface TaskDetailProps {
   taskId: string;
   onClose: () => void;
   onTaskChange: () => Promise<void> | void;
+  // Screen-space (viewport) Y coordinate of the task card that was clicked to
+  // open this panel. Used purely for the opening animation below so the
+  // panel visually unfurls from where the user clicked instead of always
+  // appearing pinned at the top of the screen. Optional so the panel still
+  // works if opened some other way (e.g. deep link) without that context.
+  originY?: number | null;
 }
 
 function formatDate(value: string) {
@@ -16,7 +23,7 @@ function formatDate(value: string) {
   return Number.isNaN(date.valueOf()) ? value : date.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
 }
 
-export function TaskDetail({ taskId, onClose, onTaskChange }: TaskDetailProps) {
+export function TaskDetail({ taskId, onClose, onTaskChange, originY }: TaskDetailProps) {
   const [task, setTask] = useState<Task | null>(null);
   const [logs, setLogs] = useState<TaskLog[]>([]);
   const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([]);
@@ -258,9 +265,38 @@ export function TaskDetail({ taskId, onClose, onTaskChange }: TaskDetailProps) {
   const currentIndex = task ? STATUS_ORDER.indexOf(task.status) : 0;
   const allowedStatuses = task ? STATUS_ORDER.slice(0, Math.min(currentIndex + 2, STATUS_ORDER.length)) : [];
 
-  return (
+  // Translate the clicked card's viewport Y position into a clip-path inset
+  // pair for the opening keyframe (see .detail-panel / @keyframes detail-open
+  // in styles.css). The panel starts as a thin sliver clipped around that Y
+  // position and expands to fill, so it reads as growing out from the card
+  // the user just clicked rather than teleporting to the top of the screen.
+  const panelOpenStyle: CSSProperties & { "--open-top"?: string; "--open-bottom"?: string } = {};
+  if (typeof originY === "number") {
+    const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 1;
+    const originPercent = Math.min(Math.max((originY / viewportHeight) * 100, 0), 100);
+    const band = 3;
+    panelOpenStyle["--open-top"] = `${Math.max(originPercent - band, 0)}%`;
+    panelOpenStyle["--open-bottom"] = `${Math.max(100 - originPercent - band, 0)}%`;
+  }
+
+  // Rendered via a portal straight into <body>. Root cause of the "detail
+  // opens pinned to the top of the screen" bug: this panel uses
+  // position:fixed to cover the viewport, but it used to be mounted deep
+  // inside `.page`, which carries a `page-in` entrance animation
+  // (`animation: page-in .45s ease-out both`). While that animation's fill
+  // mode holds its end keyframe, the browser's computed transform on `.page`
+  // is a literal identity matrix rather than the `none` keyword — and any
+  // transform other than the `none` keyword creates a new containing block
+  // for fixed-position descendants. So the "fixed" backdrop/panel were
+  // actually being positioned relative to `.page`'s (scrolled) box instead
+  // of the real viewport, which is exactly why the panel's content appeared
+  // to land at an unpredictable spot tied to board scroll position rather
+  // than pinned to the true top of the screen. Portaling to `document.body`
+  // (which never has a transform) removes that broken containing block, so
+  // the panel is always positioned relative to the actual viewport.
+  return createPortal(
     <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
-      <aside className="detail-panel" role="dialog" aria-modal="true" aria-label="Task details" onMouseDown={(event) => event.stopPropagation()}>
+      <aside className="detail-panel" style={panelOpenStyle} role="dialog" aria-modal="true" aria-label="Task details" onMouseDown={(event) => event.stopPropagation()}>
         <div className="detail-topline"><span className="section-kicker">Task detail</span><button className="icon-button" type="button" onClick={onClose} aria-label="Close task detail">×</button></div>
         {loading ? <p className="loading-copy">Loading task…</p> : !task ? <div className="error-banner" role="alert">{error || "Task could not be loaded."}</div> : <>
           <div className="detail-title-row">
@@ -352,6 +388,7 @@ export function TaskDetail({ taskId, onClose, onTaskChange }: TaskDetailProps) {
           </section>
         </>}
       </aside>
-    </div>
+    </div>,
+    document.body,
   );
 }
