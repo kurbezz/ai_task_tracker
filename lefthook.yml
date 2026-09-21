@@ -3,17 +3,17 @@ pre-commit:
   jobs:
     - name: backend-fmt
       root: "backend/"
-      glob: "*.rs"
+      glob: "**/*.rs"
       run: cargo fmt --manifest-path Cargo.toml -- --check
 
     - name: backend-clippy
       root: "backend/"
-      glob: "*.rs"
+      glob: "**/*.rs"
       run: cargo clippy --manifest-path Cargo.toml --all-targets -- -D warnings
 
     - name: frontend-build
       root: "frontend/"
-      glob: "*.{ts,tsx}"
+      glob: "**/*.{ts,tsx}"
       run: npm run build
 
 pre-push:
@@ -21,5 +21,5 @@ pre-push:
   jobs:
     - name: backend-test
       root: "backend/"
-      glob: "*.rs"
+      glob: "**/*.rs"
       run: cargo test --manifest-path Cargo.toml
