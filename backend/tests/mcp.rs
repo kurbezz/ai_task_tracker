@@ -757,3 +757,141 @@ async fn add_task_tag_returns_tool_errors_for_blank_and_noncanonical_names() {
     client.cancel().await.expect("cancel client");
     server.abort();
 }
+
+#[tokio::test]
+async fn archive_task_and_unarchive_task_tools_round_trip() {
+    let (base_url, server) = support::spawn_http_server(support::state().await).await;
+    let project_id = create_project(&base_url).await;
+
+    let headers = support::api_key_header().into_iter().collect();
+    let transport = StreamableHttpClientTransport::from_config(
+        StreamableHttpClientTransportConfig::with_uri(format!("{base_url}/mcp"))
+            .custom_headers(headers),
+    );
+    let client = ClientInfo::default()
+        .serve(transport)
+        .await
+        .expect("client connects");
+
+    let tools = client
+        .list_tools(Default::default())
+        .await
+        .expect("list tools");
+    assert!(tools.tools.iter().any(|tool| tool.name == "archive_task"));
+    assert!(tools.tools.iter().any(|tool| tool.name == "unarchive_task"));
+
+    let create_args = serde_json::json!({ "project_id": project_id, "title": "Archive me" })
+        .as_object()
+        .cloned()
+        .expect("create args should be an object");
+    let created = client
+        .call_tool(CallToolRequestParams::new("create_task").with_arguments(create_args))
+        .await
+        .expect("create_task should succeed");
+    let created_task: serde_json::Value = serde_json::from_str(
+        created
+            .content
+            .first()
+            .expect("content block")
+            .as_text()
+            .expect("text content")
+            .text
+            .as_str(),
+    )
+    .expect("valid task json");
+    let task_id = created_task["id"].as_str().expect("task id").to_owned();
+
+    let archive_args = serde_json::json!({ "task_id": task_id.clone() })
+        .as_object()
+        .cloned()
+        .expect("archive args should be an object");
+    let archived = client
+        .call_tool(CallToolRequestParams::new("archive_task").with_arguments(archive_args))
+        .await
+        .expect("archive_task should succeed");
+    assert_ne!(archived.is_error, Some(true));
+    let archived_task: serde_json::Value = serde_json::from_str(
+        archived
+            .content
+            .first()
+            .expect("content block")
+            .as_text()
+            .expect("text content")
+            .text
+            .as_str(),
+    )
+    .expect("valid task json");
+    assert!(archived_task["archived_at"].as_str().is_some());
+
+    let list_hidden_args = serde_json::json!({ "project_id": project_id })
+        .as_object()
+        .cloned()
+        .expect("list args should be an object");
+    let list_hidden = client
+        .call_tool(
+            CallToolRequestParams::new("list_project_tasks").with_arguments(list_hidden_args),
+        )
+        .await
+        .expect("list_project_tasks should succeed");
+    let hidden_tasks: serde_json::Value = serde_json::from_str(
+        list_hidden
+            .content
+            .first()
+            .expect("content block")
+            .as_text()
+            .expect("text content")
+            .text
+            .as_str(),
+    )
+    .expect("valid tasks json");
+    assert!(hidden_tasks.as_array().expect("tasks array").is_empty());
+
+    let list_included_args =
+        serde_json::json!({ "project_id": project_id, "include_archived": true })
+            .as_object()
+            .cloned()
+            .expect("list args should be an object");
+    let list_included = client
+        .call_tool(
+            CallToolRequestParams::new("list_project_tasks").with_arguments(list_included_args),
+        )
+        .await
+        .expect("list_project_tasks should succeed");
+    let included_tasks: serde_json::Value = serde_json::from_str(
+        list_included
+            .content
+            .first()
+            .expect("content block")
+            .as_text()
+            .expect("text content")
+            .text
+            .as_str(),
+    )
+    .expect("valid tasks json");
+    assert_eq!(included_tasks.as_array().expect("tasks array").len(), 1);
+
+    let unarchive_args = serde_json::json!({ "task_id": task_id })
+        .as_object()
+        .cloned()
+        .expect("unarchive args should be an object");
+    let unarchived = client
+        .call_tool(CallToolRequestParams::new("unarchive_task").with_arguments(unarchive_args))
+        .await
+        .expect("unarchive_task should succeed");
+    assert_ne!(unarchived.is_error, Some(true));
+    let unarchived_task: serde_json::Value = serde_json::from_str(
+        unarchived
+            .content
+            .first()
+            .expect("content block")
+            .as_text()
+            .expect("text content")
+            .text
+            .as_str(),
+    )
+    .expect("valid task json");
+    assert_eq!(unarchived_task["archived_at"], serde_json::Value::Null);
+
+    client.cancel().await.expect("cancel client");
+    server.abort();
+}

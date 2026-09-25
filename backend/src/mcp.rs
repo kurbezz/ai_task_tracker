@@ -45,6 +45,9 @@ struct GetTaskParams {
 #[derive(serde::Deserialize, schemars::JsonSchema)]
 struct ListProjectTasksParams {
     project_id: String,
+    /// Include archived tasks in the results. Defaults to false.
+    #[serde(default)]
+    include_archived: bool,
 }
 
 #[derive(serde::Deserialize, schemars::JsonSchema)]
@@ -156,19 +159,44 @@ impl TaskMcpServer {
         }
     }
 
+    #[tool(
+        description = "Archive a task by id. Archived tasks are hidden from the board and attention queue."
+    )]
+    async fn archive_task(
+        &self,
+        Parameters(GetTaskParams { task_id }): Parameters<GetTaskParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let state = self.state();
+        tool_result(tasks::archive_task_core(&state, &task_id).await)
+    }
+
+    #[tool(description = "Unarchive a previously archived task by id")]
+    async fn unarchive_task(
+        &self,
+        Parameters(GetTaskParams { task_id }): Parameters<GetTaskParams>,
+    ) -> Result<CallToolResult, McpError> {
+        let state = self.state();
+        tool_result(tasks::unarchive_task_core(&state, &task_id).await)
+    }
+
     #[tool(description = "List all projects")]
     async fn list_projects(&self) -> Result<CallToolResult, McpError> {
         let state = self.state();
         tool_result(projects::list_projects_core(&state).await)
     }
 
-    #[tool(description = "List all tasks in a project")]
+    #[tool(
+        description = "List tasks in a project. Archived tasks are excluded unless include_archived is true."
+    )]
     async fn list_project_tasks(
         &self,
-        Parameters(ListProjectTasksParams { project_id }): Parameters<ListProjectTasksParams>,
+        Parameters(ListProjectTasksParams {
+            project_id,
+            include_archived,
+        }): Parameters<ListProjectTasksParams>,
     ) -> Result<CallToolResult, McpError> {
         let state = self.state();
-        tool_result(tasks::list_project_tasks_core(&state, &project_id).await)
+        tool_result(tasks::list_project_tasks_core(&state, &project_id, include_archived).await)
     }
 
     #[tool(

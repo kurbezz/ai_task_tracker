@@ -13,6 +13,7 @@ pub struct ErrorBody {
     pub code: String,
 }
 
+#[derive(Debug)]
 pub enum AppError {
     Unauthorized,
     NotFound,

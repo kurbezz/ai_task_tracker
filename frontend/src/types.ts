@@ -46,6 +46,7 @@ export interface Task {
   pr_url: string | null;
   created_at: string;
   updated_at: string;
+  archived_at: string | null;
   tags: Tag[];
 }
 
@@ -58,6 +59,10 @@ export interface TaskLog {
 }
 
 export interface AttentionItem extends Task {
+  project_name: string;
+}
+
+export interface ArchivedItem extends Task {
   project_name: string;
 }
 

@@ -1,6 +1,6 @@
 import { CSSProperties, FormEvent, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { addLog, addTag, createTimeEntry, deleteTask, deleteTimeEntry, getTask, listLogs, listTaskTimeEntries, removeTag, transitionTask, updateTask, updateTimeEntry } from "../api";
+import { addLog, addTag, archiveTask, createTimeEntry, deleteTask, deleteTimeEntry, getTask, listLogs, listTaskTimeEntries, removeTag, transitionTask, unarchiveTask, updateTask, updateTimeEntry } from "../api";
 import { formatHours, todayLocal } from "../timeFormat";
 import { STATUS_LABELS, STATUS_ORDER, type Status, type Task, type TaskLog, type TimeEntry } from "../types";
 import { useTaskEvents, useTaskEventsReconnect } from "../taskEvents";
@@ -250,6 +250,20 @@ export function TaskDetail({ taskId, onClose, onTaskChange, originY }: TaskDetai
     });
   }
 
+  function archiveThisTask() {
+    mutate("archive", () => archiveTask(taskId), true, async () => {
+      onClose();
+      await onTaskChange();
+    });
+  }
+
+  function unarchiveThisTask() {
+    mutate("unarchive", () => unarchiveTask(taskId), true, async () => {
+      await refresh();
+      await onTaskChange();
+    });
+  }
+
   async function copyTaskCommand() {
     const command = `/tt ${taskId}`;
     try {
@@ -310,6 +324,7 @@ export function TaskDetail({ taskId, onClose, onTaskChange, originY }: TaskDetai
               <>
                 <h2 className="detail-title">{task.title}</h2>
                 <button className="button button-ghost button-small" type="button" onClick={startEditTitle}>Edit</button>
+                {task.archived_at && <span className="tag tag--system">Archived</span>}
               </>
             )}
             <button
@@ -356,6 +371,11 @@ export function TaskDetail({ taskId, onClose, onTaskChange, originY }: TaskDetai
             <label>Source link<input value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} placeholder="https://…" />{task.source_url && <a href={task.source_url} target="_blank" rel="noreferrer">Open ↗</a>}</label>
             <label>PR link<input value={prUrl} onChange={(event) => setPrUrl(event.target.value)} placeholder="https://…" />{task.pr_url && <a href={task.pr_url} target="_blank" rel="noreferrer">Open ↗</a>}</label>
             <button className="button button-secondary" disabled={busy !== ""}>{busy === "save" ? "Saving…" : "Save details"}</button>
+            {task.archived_at ? (
+              <button className="button button-ghost" type="button" disabled={busy !== ""} onClick={unarchiveThisTask}>{busy === "unarchive" ? "Restoring…" : "Unarchive"}</button>
+            ) : (
+              <button className="button button-ghost" type="button" disabled={busy !== ""} onClick={archiveThisTask}>{busy === "archive" ? "Archiving…" : "Archive"}</button>
+            )}
             <button className="button button-quiet" type="button" disabled={busy !== ""} onClick={removeTask}>{busy === "delete" ? "Deleting…" : "Delete task"}</button>
           </form>
 

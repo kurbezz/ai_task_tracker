@@ -491,3 +491,291 @@ async fn duplicate_transitions_do_not_create_extra_status_logs() {
     pool.close().await;
     std::fs::remove_file(database_path).unwrap();
 }
+
+#[tokio::test]
+async fn archiving_a_task_hides_it_from_board_and_attention_but_it_remains_gettable() {
+    let app = ai_task_tracker::build_router(support::state().await);
+    let project = create_project(&app).await;
+    let project_id = project["id"].as_str().unwrap();
+    let task = create_task(&app, project_id).await;
+    let task_id = task["id"].as_str().unwrap();
+
+    // Tag it so it would otherwise show up in needs-attention.
+    let response = app
+        .clone()
+        .oneshot(support::api_request(
+            Method::POST,
+            &format!("/api/tasks/{task_id}/tags"),
+            Some(json!({"name": "BLOCKED"})),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let response = app
+        .clone()
+        .oneshot(support::api_request(
+            Method::GET,
+            "/api/tasks/needs-attention",
+            None,
+        ))
+        .await
+        .unwrap();
+    let attention = support::json_body(response).await;
+    assert!(attention
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|item| item["id"] == task_id));
+
+    let response = app
+        .clone()
+        .oneshot(support::api_request(
+            Method::POST,
+            &format!("/api/tasks/{task_id}/archive"),
+            None,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let archived = support::json_body(response).await;
+    assert!(archived["archived_at"].as_str().is_some());
+
+    let response = app
+        .clone()
+        .oneshot(support::api_request(
+            Method::GET,
+            &format!("/api/projects/{project_id}/tasks"),
+            None,
+        ))
+        .await
+        .unwrap();
+    let board_tasks = support::json_body(response).await;
+    assert!(!board_tasks
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|t| t["id"] == task_id));
+
+    let response = app
+        .clone()
+        .oneshot(support::api_request(
+            Method::GET,
+            "/api/tasks/needs-attention",
+            None,
+        ))
+        .await
+        .unwrap();
+    let attention = support::json_body(response).await;
+    assert!(!attention
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|item| item["id"] == task_id));
+
+    let response = app
+        .clone()
+        .oneshot(support::api_request(
+            Method::GET,
+            "/api/tasks/archived",
+            None,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let archived_list = support::json_body(response).await;
+    let archived_entry = archived_list
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|item| item["id"] == task_id)
+        .expect("archived task should appear in archived list");
+    assert_eq!(archived_entry["project_name"], "Tracker");
+
+    let response = app
+        .clone()
+        .oneshot(support::api_request(
+            Method::GET,
+            &format!("/api/tasks/{task_id}"),
+            None,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let fetched = support::json_body(response).await;
+    assert!(fetched["archived_at"].as_str().is_some());
+
+    let response = app
+        .clone()
+        .oneshot(support::api_request(
+            Method::POST,
+            &format!("/api/tasks/{task_id}/unarchive"),
+            None,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let unarchived = support::json_body(response).await;
+    assert_eq!(unarchived["archived_at"], json!(null));
+
+    let response = app
+        .oneshot(support::api_request(
+            Method::GET,
+            &format!("/api/projects/{project_id}/tasks"),
+            None,
+        ))
+        .await
+        .unwrap();
+    let board_tasks = support::json_body(response).await;
+    assert!(board_tasks
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|t| t["id"] == task_id));
+}
+
+#[tokio::test]
+async fn archiving_an_unknown_task_returns_not_found() {
+    let app = ai_task_tracker::build_router(support::state().await);
+
+    let response = app
+        .clone()
+        .oneshot(support::api_request(
+            Method::POST,
+            "/api/tasks/missing/archive",
+            None,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+
+    let response = app
+        .oneshot(support::api_request(
+            Method::POST,
+            "/api/tasks/missing/unarchive",
+            None,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn archiving_is_idempotent_and_preserves_original_timestamp() {
+    let app = ai_task_tracker::build_router(support::state().await);
+    let project = create_project(&app).await;
+    let task = create_task(&app, project["id"].as_str().unwrap()).await;
+    let task_id = task["id"].as_str().unwrap();
+
+    let response = app
+        .clone()
+        .oneshot(support::api_request(
+            Method::POST,
+            &format!("/api/tasks/{task_id}/archive"),
+            None,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let first_archive = support::json_body(response).await;
+    let first_archived_at = first_archive["archived_at"].as_str().unwrap().to_owned();
+
+    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+
+    let response = app
+        .clone()
+        .oneshot(support::api_request(
+            Method::POST,
+            &format!("/api/tasks/{task_id}/archive"),
+            None,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let second_archive = support::json_body(response).await;
+    assert_eq!(second_archive["archived_at"], json!(first_archived_at));
+
+    // Unarchiving an already-unarchived task is a no-op success.
+    let response = app
+        .clone()
+        .oneshot(support::api_request(
+            Method::POST,
+            &format!("/api/tasks/{task_id}/unarchive"),
+            None,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let response = app
+        .oneshot(support::api_request(
+            Method::POST,
+            &format!("/api/tasks/{task_id}/unarchive"),
+            None,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let noop_unarchive = support::json_body(response).await;
+    assert_eq!(noop_unarchive["archived_at"], json!(null));
+}
+
+#[tokio::test]
+async fn archive_endpoints_require_auth() {
+    let app = ai_task_tracker::build_router(support::state().await);
+    let project = create_project(&app).await;
+    let task = create_task(&app, project["id"].as_str().unwrap()).await;
+    let task_id = task["id"].as_str().unwrap();
+
+    let unauthenticated = |method: Method, uri: String| {
+        axum::http::Request::builder()
+            .method(method)
+            .uri(uri)
+            .body(axum::body::Body::empty())
+            .unwrap()
+    };
+
+    let response = app
+        .clone()
+        .oneshot(unauthenticated(
+            Method::GET,
+            "/api/tasks/archived".to_owned(),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+    let response = app
+        .clone()
+        .oneshot(unauthenticated(
+            Method::POST,
+            format!("/api/tasks/{task_id}/archive"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+    let response = app
+        .oneshot(unauthenticated(
+            Method::POST,
+            format!("/api/tasks/{task_id}/unarchive"),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn tasks_archived_route_is_not_shadowed_by_task_by_id_route() {
+    let app = ai_task_tracker::build_router(support::state().await);
+
+    let response = app
+        .oneshot(support::api_request(
+            Method::GET,
+            "/api/tasks/archived",
+            None,
+        ))
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    assert_eq!(support::json_body(response).await, json!([]));
+}

@@ -1,6 +1,6 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { createTask, listProjectTasks, listProjects } from "../api";
+import { archiveTask, createTask, listProjectTasks, listProjects } from "../api";
 import { TaskCard } from "../components/TaskCard";
 import { TaskDetail } from "../components/TaskDetail";
 import { useTaskEvents, useTaskEventsReconnect } from "../taskEvents";
@@ -24,6 +24,8 @@ export function BoardPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [archivingDone, setArchivingDone] = useState(false);
+  const [archiveProgress, setArchiveProgress] = useState<{ done: number; total: number } | null>(null);
 
   const projectsById = useMemo(() => new Map(projects.map((project) => [project.id, project])), [projects]);
 
@@ -45,6 +47,10 @@ export function BoardPage() {
 
   useTaskEvents((event) => {
     if (event.type === "task_created" || event.type === "task_updated") {
+      if (event.task.archived_at) {
+        setTasks((current) => current.filter((task) => task.id !== event.task.id));
+        return;
+      }
       setTasks((current) => {
         const index = current.findIndex((task) => task.id === event.task.id);
         if (index === -1) return [event.task, ...current];
@@ -94,6 +100,38 @@ export function BoardPage() {
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not create task");
     } finally { setSaving(false); }
+  }
+
+  async function archiveAllDone(doneTasks: Task[]) {
+    if (doneTasks.length === 0) return;
+    const label = filteredProject ? `all ${doneTasks.length} done task${doneTasks.length === 1 ? "" : "s"} in ${filteredProject.name}` : `all ${doneTasks.length} done task${doneTasks.length === 1 ? "" : "s"}`;
+    if (!window.confirm(`Archive ${label}? Archived tasks leave the board and attention queue.`)) return;
+    setError("");
+    setArchivingDone(true);
+    setArchiveProgress({ done: 0, total: doneTasks.length });
+    const queue = [...doneTasks];
+    const concurrency = 4;
+    const failures: string[] = [];
+    let completed = 0;
+    async function worker() {
+      while (queue.length > 0) {
+        const task = queue.shift();
+        if (!task) break;
+        try {
+          await archiveTask(task.id);
+          setTasks((current) => current.filter((item) => item.id !== task.id));
+        } catch (reason) {
+          failures.push(reason instanceof Error ? reason.message : `Could not archive "${task.title}"`);
+        } finally {
+          completed += 1;
+          setArchiveProgress({ done: completed, total: doneTasks.length });
+        }
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(concurrency, doneTasks.length) }, worker));
+    if (failures.length > 0) setError(failures.join(" "));
+    setArchivingDone(false);
+    setArchiveProgress(null);
   }
 
   return (
@@ -147,7 +185,20 @@ export function BoardPage() {
       {loading ? <p className="loading-copy">Loading board…</p> : <div className="kanban-grid">{STATUS_ORDER.map((status) => {
         const columnTasks = visibleTasks.filter((task) => task.status === status);
         return <section className="kanban-column" key={status}>
-          <header><span>{STATUS_LABELS[status]}</span><b>{columnTasks.length}</b></header>
+          <header>
+            <span>{STATUS_LABELS[status]}</span>
+            {status === "DONE" && columnTasks.length > 0 && (
+              <button
+                className="button button-ghost button-small column-archive-all"
+                type="button"
+                disabled={archivingDone}
+                onClick={() => void archiveAllDone(columnTasks)}
+              >
+                {archivingDone && archiveProgress ? `Archiving ${archiveProgress.done}/${archiveProgress.total}…` : "Archive all"}
+              </button>
+            )}
+            <b>{columnTasks.length}</b>
+          </header>
           <div className="kanban-stack">
             {columnTasks.map((task) => (
               <TaskCard

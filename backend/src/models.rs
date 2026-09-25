@@ -62,6 +62,7 @@ pub struct Task {
     pub result_summary: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+    pub archived_at: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -77,6 +78,7 @@ pub struct TaskResponse {
     pub result_summary: Option<String>,
     pub created_at: String,
     pub updated_at: String,
+    pub archived_at: Option<String>,
     pub tags: Vec<Tag>,
 }
 
@@ -97,6 +99,7 @@ impl TaskResponse {
             result_summary: task.result_summary,
             created_at: task.created_at,
             updated_at: task.updated_at,
+            archived_at: task.archived_at,
             tags,
         }
     }
@@ -161,6 +164,13 @@ pub struct AttachTag {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct AttentionItem {
+    #[serde(flatten)]
+    pub task: TaskResponse,
+    pub project_name: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ArchivedItem {
     #[serde(flatten)]
     pub task: TaskResponse,
     pub project_name: String,

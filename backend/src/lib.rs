@@ -110,6 +110,12 @@ fn build_router_with_mcp_session_config(state: AppState, session_config: Session
             "/tasks/needs-attention",
             get(handlers::tasks::list_attention),
         )
+        .route("/tasks/archived", get(handlers::tasks::list_archived_tasks))
+        .route("/tasks/{id}/archive", post(handlers::tasks::archive_task))
+        .route(
+            "/tasks/{id}/unarchive",
+            post(handlers::tasks::unarchive_task),
+        )
         .route(
             "/time-entries",
             get(handlers::time_entries::list_time_entries)

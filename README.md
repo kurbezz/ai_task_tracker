@@ -76,8 +76,20 @@ Example client configuration (Claude Code / opencode style):
 ```
 
 Available tools: `create_task`, `get_task`, `list_projects`, `list_project_tasks`,
-`transition_task_status`, `add_task_log`, `add_task_tag`, `remove_task_tag`, `update_task`.
+`transition_task_status`, `add_task_log`, `add_task_tag`, `remove_task_tag`, `update_task`,
+`archive_task`, `unarchive_task`.
 Each tool shares the REST API's validation, persistence, and workflow-transition rules.
+
+`list_project_tasks` accepts an optional `include_archived` boolean (defaults to `false`) to
+include archived tasks in the results.
+
+### Task archiving
+
+Tasks can be archived (via the REST API's `/api/tasks/{id}/archive` and
+`/api/tasks/{id}/unarchive` endpoints, or the `archive_task`/`unarchive_task` MCP tools).
+Archived tasks are hidden from the project board and the needs-attention list, but remain
+visible on the dedicated Archive page (`GET /api/tasks/archived`) and can still be fetched
+directly by id. Archiving is reversible at any time via unarchive.
 
 MCP sessions are in-memory. After an idle timeout or server restart, a request using an old
 `Mcp-Session-Id` receives HTTP 404. MCP clients must initialize a new session by sending

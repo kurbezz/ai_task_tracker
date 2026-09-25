@@ -1,4 +1,4 @@
-import type { AttentionItem, Project, Status, Tag, Task, TaskLog, TimeEntry, TimeSyncStatus } from "./types";
+import type { ArchivedItem, AttentionItem, Project, Status, Tag, Task, TaskLog, TimeEntry, TimeSyncStatus } from "./types";
 import { getApiKey } from "./apiKey";
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -57,6 +57,9 @@ export const addTag = (taskId: string, name: string) =>
 export const removeTag = (taskId: string, tagId: string) =>
   request<void>(`/tasks/${taskId}/tags/${tagId}`, { method: "DELETE" });
 export const listAttention = () => request<AttentionItem[]>("/tasks/needs-attention");
+export const archiveTask = (taskId: string) => request<Task>(`/tasks/${taskId}/archive`, json("POST", {}));
+export const unarchiveTask = (taskId: string) => request<Task>(`/tasks/${taskId}/unarchive`, json("POST", {}));
+export const listArchivedTasks = () => request<ArchivedItem[]>("/tasks/archived");
 
 export const listTimeEntries = (date: string) =>
   request<{ entries: TimeEntry[]; sync: TimeSyncStatus }>(`/time-entries?date=${date}`);

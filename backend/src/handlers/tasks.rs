@@ -11,8 +11,8 @@ use crate::{
     error::AppError,
     events::TaskEvent,
     models::{
-        AttachTag, AttentionItem, CreateLog, CreateTask, Status, Tag, Task, TaskLog, TaskResponse,
-        TransitionRequest, UpdateTask,
+        ArchivedItem, AttachTag, AttentionItem, CreateLog, CreateTask, Status, Tag, Task, TaskLog,
+        TaskResponse, TransitionRequest, UpdateTask,
     },
     AppState,
 };
@@ -47,6 +47,7 @@ pub(crate) async fn create_task_core(
         result_summary: None,
         created_at: now.clone(),
         updated_at: now,
+        archived_at: None,
     };
     sqlx::query(
         "INSERT INTO tasks (id, project_id, title, description, source_url, pr_url, status, agent, result_summary, created_at, updated_at) \
@@ -201,22 +202,36 @@ pub async fn list_project_tasks(
     State(state): State<AppState>,
     Path(project_id): Path<String>,
 ) -> Result<Json<Vec<TaskResponse>>, AppError> {
-    Ok(Json(list_project_tasks_core(&state, &project_id).await?))
+    Ok(Json(
+        list_project_tasks_core(&state, &project_id, false).await?,
+    ))
 }
 
 pub(crate) async fn list_project_tasks_core(
     state: &AppState,
     project_id: &str,
+    include_archived: bool,
 ) -> Result<Vec<TaskResponse>, AppError> {
     ensure_project(state, project_id).await?;
-    let tasks = sqlx::query_as::<_, Task>(
-        "SELECT id, project_id, title, description, source_url, pr_url, status, agent, result_summary, created_at, updated_at \
-         FROM tasks WHERE project_id = ? ORDER BY created_at",
-    )
-    .bind(project_id)
-    .fetch_all(&state.pool)
-    .await
-    .map_err(AppError::Internal)?;
+    let tasks = if include_archived {
+        sqlx::query_as::<_, Task>(
+            "SELECT id, project_id, title, description, source_url, pr_url, status, agent, result_summary, created_at, updated_at, archived_at \
+             FROM tasks WHERE project_id = ? ORDER BY created_at",
+        )
+        .bind(project_id)
+        .fetch_all(&state.pool)
+        .await
+        .map_err(AppError::Internal)?
+    } else {
+        sqlx::query_as::<_, Task>(
+            "SELECT id, project_id, title, description, source_url, pr_url, status, agent, result_summary, created_at, updated_at, archived_at \
+             FROM tasks WHERE project_id = ? AND archived_at IS NULL ORDER BY created_at",
+        )
+        .bind(project_id)
+        .fetch_all(&state.pool)
+        .await
+        .map_err(AppError::Internal)?
+    };
 
     let mut responses = Vec::with_capacity(tasks.len());
     for task in tasks {
@@ -246,7 +261,7 @@ pub(crate) async fn transition_task_core(
 
     let result = async {
         let task = sqlx::query_as::<_, Task>(
-            "SELECT id, project_id, title, description, source_url, pr_url, status, agent, result_summary, created_at, updated_at \
+            "SELECT id, project_id, title, description, source_url, pr_url, status, agent, result_summary, created_at, updated_at, archived_at \
              FROM tasks WHERE id = ?",
         )
         .bind(id)
@@ -532,12 +547,12 @@ pub async fn list_attention(
 ) -> Result<Json<Vec<AttentionItem>>, AppError> {
     let rows = sqlx::query_as::<_, AttentionTask>(
         "SELECT DISTINCT tasks.id, tasks.project_id, tasks.title, tasks.description, tasks.source_url, tasks.pr_url, tasks.status, \
-         tasks.agent, tasks.result_summary, tasks.created_at, tasks.updated_at, projects.name AS project_name \
+         tasks.agent, tasks.result_summary, tasks.created_at, tasks.updated_at, tasks.archived_at, projects.name AS project_name \
          FROM tasks \
          INNER JOIN projects ON projects.id = tasks.project_id \
          INNER JOIN task_tags ON task_tags.task_id = tasks.id \
          INNER JOIN tags ON tags.id = task_tags.tag_id \
-         WHERE tags.name IN ('NEEDS_USER_INPUT', 'BLOCKED', 'FAILED') \
+         WHERE tags.name IN ('NEEDS_USER_INPUT', 'BLOCKED', 'FAILED') AND tasks.archived_at IS NULL \
          ORDER BY tasks.updated_at",
     )
     .fetch_all(&state.pool)
@@ -558,6 +573,7 @@ pub async fn list_attention(
             result_summary: row.result_summary,
             created_at: row.created_at,
             updated_at: row.updated_at,
+            archived_at: row.archived_at,
         };
         attention.push(AttentionItem {
             task: task_response(&state, task).await?,
@@ -567,9 +583,111 @@ pub async fn list_attention(
     Ok(Json(attention))
 }
 
+pub async fn archive_task(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<TaskResponse>, AppError> {
+    Ok(Json(archive_task_core(&state, &id).await?))
+}
+
+pub(crate) async fn archive_task_core(
+    state: &AppState,
+    id: &str,
+) -> Result<TaskResponse, AppError> {
+    let task = fetch_task(state, id).await?; // ensures NotFound if missing
+    if task.archived_at.is_none() {
+        let now = Utc::now().to_rfc3339();
+        sqlx::query("UPDATE tasks SET archived_at = ?, updated_at = ? WHERE id = ?")
+            .bind(&now)
+            .bind(&now)
+            .bind(id)
+            .execute(&state.pool)
+            .await
+            .map_err(AppError::Internal)?;
+    }
+    let response = task_response(state, fetch_task(state, id).await?).await?;
+    let _ = state.events.send(TaskEvent::TaskUpdated {
+        task: response.clone(),
+    });
+    Ok(response)
+}
+
+pub async fn unarchive_task(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<TaskResponse>, AppError> {
+    Ok(Json(unarchive_task_core(&state, &id).await?))
+}
+
+pub(crate) async fn unarchive_task_core(
+    state: &AppState,
+    id: &str,
+) -> Result<TaskResponse, AppError> {
+    let task = fetch_task(state, id).await?; // ensures NotFound if missing
+    if task.archived_at.is_some() {
+        sqlx::query("UPDATE tasks SET archived_at = ?, updated_at = ? WHERE id = ?")
+            .bind(Option::<String>::None)
+            .bind(Utc::now().to_rfc3339())
+            .bind(id)
+            .execute(&state.pool)
+            .await
+            .map_err(AppError::Internal)?;
+    }
+    let response = task_response(state, fetch_task(state, id).await?).await?;
+    let _ = state.events.send(TaskEvent::TaskUpdated {
+        task: response.clone(),
+    });
+    Ok(response)
+}
+
+pub async fn list_archived_tasks(
+    State(state): State<AppState>,
+) -> Result<Json<Vec<ArchivedItem>>, AppError> {
+    Ok(Json(list_archived_tasks_core(&state).await?))
+}
+
+pub(crate) async fn list_archived_tasks_core(
+    state: &AppState,
+) -> Result<Vec<ArchivedItem>, AppError> {
+    let rows = sqlx::query_as::<_, AttentionTask>(
+        "SELECT tasks.id, tasks.project_id, tasks.title, tasks.description, tasks.source_url, tasks.pr_url, tasks.status, \
+         tasks.agent, tasks.result_summary, tasks.created_at, tasks.updated_at, tasks.archived_at, projects.name AS project_name \
+         FROM tasks \
+         INNER JOIN projects ON projects.id = tasks.project_id \
+         WHERE tasks.archived_at IS NOT NULL \
+         ORDER BY tasks.archived_at DESC",
+    )
+    .fetch_all(&state.pool)
+    .await
+    .map_err(AppError::Internal)?;
+
+    let mut archived = Vec::with_capacity(rows.len());
+    for row in rows {
+        let task = Task {
+            id: row.id,
+            project_id: row.project_id,
+            title: row.title,
+            description: row.description,
+            source_url: row.source_url,
+            pr_url: row.pr_url,
+            status: row.status,
+            agent: row.agent,
+            result_summary: row.result_summary,
+            created_at: row.created_at,
+            updated_at: row.updated_at,
+            archived_at: row.archived_at,
+        };
+        archived.push(ArchivedItem {
+            task: task_response(state, task).await?,
+            project_name: row.project_name,
+        });
+    }
+    Ok(archived)
+}
+
 pub(crate) async fn fetch_task(state: &AppState, id: &str) -> Result<Task, AppError> {
     sqlx::query_as::<_, Task>(
-        "SELECT id, project_id, title, description, source_url, pr_url, status, agent, result_summary, created_at, updated_at \
+        "SELECT id, project_id, title, description, source_url, pr_url, status, agent, result_summary, created_at, updated_at, archived_at \
          FROM tasks WHERE id = ?",
     )
     .bind(id)
@@ -655,5 +773,6 @@ struct AttentionTask {
     result_summary: Option<String>,
     created_at: String,
     updated_at: String,
+    archived_at: Option<String>,
     project_name: String,
 }
